@@ -1,5 +1,6 @@
 with MicroBit.Console; use MicroBit.Console;
 use MicroBit;
+-- USN PROJECT TEMPLATE INTELLIGENT REAL-TIME SYSTEMS
 -- Project name: [project name]
 -- Project members: [name, name, .. ]
 
