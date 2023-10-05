@@ -7,14 +7,27 @@ project Itrs is
    for Main use ("main.adb");
 
    package Compiler is
-      for Switches ("ada") use ("-gnat2022");
+      for Switches ("ada") use ("-gnat2022", "-g");
    end Compiler;
 
    package Ide is
       for Connection_Tool use "pyocd";
       for Program_Host use ":1234";
       for Communication_Protocol use "remote";
+      for Vcs_Kind use "git";
+      for Vcs_Repository_Root use "../../Ada-Embedded-Project-MicroBitV2";
    end Ide;
+
+   for Target use "arm-eabi";
+   for Runtime ("ada") use "ravenscar-full-nrf52833";
+
+   package Builder is
+      for Switches ("ada") use ("-g");
+   end Builder;
+
+   package Linker is
+      for Switches ("ada") use ("-g");
+   end Linker;
 
 end Itrs;
 
