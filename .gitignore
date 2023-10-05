@@ -3,3 +3,6 @@
 
 # Ada Library Information
 *.ali
+
+#ignore everything in Obj
+obj/
