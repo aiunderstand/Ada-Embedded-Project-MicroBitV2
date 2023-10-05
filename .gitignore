@@ -5,4 +5,4 @@
 *.ali
 
 #ignore everything in Obj
-obj/
+Project/obj/
