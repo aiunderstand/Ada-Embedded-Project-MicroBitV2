@@ -16,7 +16,7 @@
                 "kind": "build",
                 "isDefault": true
             },
-			"label": "Test",
+			"label": "Build & Flash",
             "dependsOn":["Build"]
 		},
 		{
@@ -48,6 +48,18 @@
 			],
             "group": "build",
 			"label": "Flash"
+		},
+        {
+			"type": "shell",
+			"command": "pyocd",
+			"args": [
+				"erase",
+                "--mass",
+                "-t",
+                "nrf52833"
+			],
+            "group": "build",
+			"label": "Erase"
 		}
 	]
 
