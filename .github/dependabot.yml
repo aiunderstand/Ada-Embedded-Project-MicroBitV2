@@ -1,0 +1,11 @@
+version: 2
+
+updates:
+  # Git submodules
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: daily
+      time: "18:00"
+      # Use Central European Time (GMT +01:00)
+      timezone: "Europe/Oslo"
