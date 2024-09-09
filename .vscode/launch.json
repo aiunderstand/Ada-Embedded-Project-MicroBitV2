@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build",
+            "executable": "${workspaceFolder}/Code/obj/main",
+            "name": "Debug (PyOCD)",
+            "request": "launch",
+            //"runToEntryPoint": "main", //(Uncomment if you want to break on start)
+            "showDevDebugOutput": "vscode",
+            "servertype": "pyocd",
+            "targetId": "nrf52833"
+        }
+    ]
+}

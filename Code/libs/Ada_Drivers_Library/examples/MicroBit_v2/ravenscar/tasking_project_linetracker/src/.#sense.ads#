@@ -1,0 +1,7 @@
+package Sense is
+
+   function LineTrackerRead(pin : Pin_Id) return Boolean;
+   
+   procedure Setup;
+   
+end Sense;

@@ -1,0 +1,30 @@
+with "..\..\..\..\boards\MicroBit_v2\microbit_v2_zfp.gpr";
+
+project FourWheelMecanumDrive is
+
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Main use ("main.adb");
+   for Target use "arm-eabi";
+   for Runtime ("ada") use "zfp-cortex-m4f";
+
+   package Linker is
+      for Switches ("ada") use ("-T", "..\..\..\..\boards\MicroBit_v2\src\zfp\link.ld", "-Wl,--print-memory-usage", "-Wl,--gc-sections", "-U__gnat_irq_trap", "-g");
+   end Linker;
+
+   package Ide is
+      for Connection_Tool use "pyocd";
+      for Program_Host use ":1234";
+      for Communication_Protocol use "remote";
+   end Ide;
+
+   package Compiler is
+      for Switches ("ada") use ("-g", "-gnatQ", "-gnata");
+   end Compiler;
+
+   package Builder is
+      for Switches ("ada") use ("-g");
+   end Builder;
+
+end FourWheelMecanumDrive;
+

@@ -1,0 +1,54 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+        {
+			"type": "shell",
+			"command": "pyocd",
+			"args": [
+				"load",
+                "-t",
+                "nrf52833",
+                "--format",
+                "elf",
+				"Code/obj/main"
+			],
+			"group": {
+                "kind": "build",
+                "isDefault": true
+            },
+			"label": "Test",
+            "dependsOn":["Build"]
+		},
+		{
+			"type": "ada",
+			"command": "gprbuild",
+			"args": [
+				"${command:ada.gprProjectArgs}",
+				"Code/src/main.adb",
+				"-cargs:ada",
+				"-gnatef",
+                //"-largs -Wl,-Map=map.txt" used in gnatstudio, needed here?
+			],
+			"problemMatcher": [
+				"$ada"
+			],
+			"group": "build",
+			"label": "Build"
+		},
+        {
+			"type": "shell",
+			"command": "pyocd",
+			"args": [
+				"load",
+                "-t",
+                "nrf52833",
+                "--format",
+                "elf",
+				"Code/obj/main"
+			],
+            "group": "build",
+			"label": "Flash"
+		}
+	]
+
+}

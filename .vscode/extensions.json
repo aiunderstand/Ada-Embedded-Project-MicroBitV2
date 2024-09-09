@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "AdaCore.ada",
+        "EditorConfig.EditorConfig",
+        "marus25.cortex-debug",
+        "ms-vscode.cpptools"
+    ]
+}

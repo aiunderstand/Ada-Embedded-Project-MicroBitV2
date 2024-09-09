@@ -1,0 +1,130 @@
+Using pre-set license
+Built from '2021.1/release' branch; Version is '2021.1.4f1 (4cd64a618c1b) revision 5035594'; Using compiler version '192528614'; Build Type 'Release'
+OS: 'Windows 10 Pro; OS build 22621.819; Version 2009; 64bit' Language: 'en' Physical Memory: 32561 MB
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1, IsPro: 0
+
+ COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\2021.1.4f1\Editor\Unity.exe
+-adb2
+-batchMode
+-noUpm
+-name
+AssetImportWorker0
+-projectPath
+C:/Users/maxde/Documents/git-repos/Ada_Drivers_Library/examples/MicroBit_v2/ravenscar/microbit-with-game-engine-unity/Unity
+-logFile
+Logs/AssetImportWorker0.log
+-srvPort
+52251
+Successfully changed project path to: C:/Users/maxde/Documents/git-repos/Ada_Drivers_Library/examples/MicroBit_v2/ravenscar/microbit-with-game-engine-unity/Unity
+C:/Users/maxde/Documents/git-repos/Ada_Drivers_Library/examples/MicroBit_v2/ravenscar/microbit-with-game-engine-unity/Unity
+Using Asset Import Pipeline V2.
+Refreshing native plugins compatible for Editor in 232.80 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Initialize engine version: 2021.1.4f1 (4cd64a618c1b)
+[Subsystems] Discovering subsystems at path C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/Resources/UnitySubsystems
+[Subsystems] Discovering subsystems at path C:/Users/maxde/Documents/git-repos/Ada_Drivers_Library/examples/MicroBit_v2/ravenscar/microbit-with-game-engine-unity/Unity/Assets
+GfxDevice: creating device client; threaded=0; jobified=0
+Direct3D:
+    Version:  Direct3D 11.0 [level 11.1]
+    Renderer: NVIDIA GeForce RTX 2080 with Max-Q Design (ID=0x1e90)
+    Vendor:   NVIDIA
+    VRAM:     8011 MB
+    Driver:   31.0.15.1700
+Initialize mono
+Mono path[0] = 'C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/Managed'
+Mono path[1] = 'C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/MonoBleedingEdge/lib/mono/unityjit'
+Mono config path = 'C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/MonoBleedingEdge/etc'
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56284
+Begin MonoManager ReloadAssembly
+Registering precompiled unity dll's ...
+Register platform support module: C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/PlaybackEngines/WebGLSupport/UnityEditor.WebGL.Extensions.dll
+Register platform support module: C:/Program Files/Unity/Hub/Editor/2021.1.4f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll
+Registered in 0.005898 seconds.
+Native extension for WindowsStandalone target not found
+Native extension for WebGL target not found
+Refreshing native plugins compatible for Editor in 213.66 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Mono: successfully reloaded assembly
+- Completed reload, in  2.856 seconds
+Platform modules already initialized, skipping
+Registering precompiled user dll's ...
+Registered in 0.023429 seconds.
+Begin MonoManager ReloadAssembly
+Native extension for WindowsStandalone target not found
+Native extension for WebGL target not found
+Refreshing native plugins compatible for Editor in 1.40 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Mono: successfully reloaded assembly
+- Completed reload, in  2.343 seconds
+Platform modules already initialized, skipping
+========================================================================
+Worker process is ready to serve import requests
+Launched and connected shader compiler UnityShaderCompiler.exe after 0.10 seconds
+Refreshing native plugins compatible for Editor in 1.32 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Unloading 3792 Unused Serialized files (Serialized files now loaded: 0)
+System memory in use before: 139.9 MB.
+System memory in use after: 140.1 MB.
+
+Unloading 67 unused Assets to reduce memory usage. Loaded Objects now: 4204.
+Total: 8.690100 ms (FindLiveObjects: 0.408800 ms CreateObjectMapping: 0.283000 ms MarkObjects: 7.878900 ms  DeleteObjects: 0.117600 ms)
+
+========================================================================
+Received Import Request.
+  path: Assets/ThirdParty/UnityTechnologies/Tanks/_Complete-GameSettings.lighting
+  artifactKey: Guid(79e22510658f9324c86d5572a8277804) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/ThirdParty/UnityTechnologies/Tanks/_Complete-GameSettings.lighting using Guid(79e22510658f9324c86d5572a8277804) Importer(815301076,1909f56bfc062723c751e8b465ee728b) LightingSettings: switching bake backend from 1 to 0.
+ -> (artifact id: 'b79035da3859ee6c7bd7a5ed4a307004') in 0.074221 seconds 
+========================================================================
+Received Import Request.
+  Time since last request: 42.138360 seconds.
+  path: Assets/Models/MicroBit
+  artifactKey: Guid(c044a27e2df4d8b4a828dc2b959ff2e0) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/Models/MicroBit using Guid(c044a27e2df4d8b4a828dc2b959ff2e0) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '7cc41fe8a5645ba9ed55d9fb474223df') in 0.009696 seconds 
+========================================================================
+Received Import Request.
+  Time since last request: 22.984479 seconds.
+  path: Assets/Models/MicroBit/BBC microbit V1.5.obj
+  artifactKey: Guid(10affb762f311ca428c542877fb5f7d7) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/Models/MicroBit/BBC microbit V1.5.obj using Guid(10affb762f311ca428c542877fb5f7d7) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '8b9ff9b0911f1a6d5cb080b01bdf0b0d') in 5.329090 seconds 
+========================================================================
+Received Import Request.
+  Time since last request: 79.647499 seconds.
+  path: Assets/Models/MicroBit/Materials
+  artifactKey: Guid(e2ceb67dfad936d4bb456ec660721dde) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/Models/MicroBit/Materials using Guid(e2ceb67dfad936d4bb456ec660721dde) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: 'b783c6d36680b29b1ce2b172db4981e6') in 0.009124 seconds 
+========================================================================
+Received Import Request.
+  Time since last request: 1230.385223 seconds.
+  path: Assets/Scenes/Simulator.unity
+  artifactKey: Guid(9fc0d4010bbf28b4594072e72b8655ab) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/Scenes/Simulator.unity using Guid(9fc0d4010bbf28b4594072e72b8655ab) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '8d9551d0ecec43b828ed1a262d14c7e2') in 0.008290 seconds 
+========================================================================
+Received Import Request.
+  Time since last request: 63.441633 seconds.
+  path: Assets/MicroBitPrefabs/Pose (Position and Orientation).prefab
+  artifactKey: Guid(8caeb6448bc85f44589da1c51be2ab07) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Start importing Assets/MicroBitPrefabs/Pose (Position and Orientation).prefab using Guid(8caeb6448bc85f44589da1c51be2ab07) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '79bf4aa5594880a40c3a229c16eb83ea') in 0.316269 seconds 
+========================================================================
+Received Prepare
+Registering precompiled user dll's ...
+Registered in 0.032194 seconds.
+Begin MonoManager ReloadAssembly
+Native extension for WindowsStandalone target not found
+Native extension for WebGL target not found
+Refreshing native plugins compatible for Editor in 1.43 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Mono: successfully reloaded assembly
+- Completed reload, in  2.188 seconds
+Platform modules already initialized, skipping
+Refreshing native plugins compatible for Editor in 1.54 ms, found 3 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Unloading 3746 Unused Serialized files (Serialized files now loaded: 0)
+System memory in use before: 141.9 MB.
+System memory in use after: 142.1 MB.
+
+Unloading 58 unused Assets to reduce memory usage. Loaded Objects now: 4218.
+Total: 9.281000 ms (FindLiveObjects: 0.396800 ms CreateObjectMapping: 0.283600 ms MarkObjects: 8.552400 ms  DeleteObjects: 0.046400 ms)
+
+AssetImportWorkerClient::OnTransportError - code=2 error=End of file

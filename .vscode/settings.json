@@ -1,0 +1,4 @@
+{
+    "ada.projectFile": "Code\\itrs.gpr",
+    "cortex-debug.armToolchainPrefix": "arm-eabi"
+}

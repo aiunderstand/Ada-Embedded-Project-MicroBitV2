@@ -1,0 +1,93 @@
+with nRF.GPIO; use nRF.GPIO;
+with System; use System;
+with Ada.Interrupts.Names;
+
+package MicroBit.IOsForTasking is
+
+   type Pin_Id is range 0 .. 34;
+   type IO_Features is (Digital, Analog, Touch);
+
+   function Supports (Pin : Pin_Id; Feature : IO_Features) return Boolean is
+     (case Feature is
+         when Digital => (case Pin is
+                             when 0 .. 16 | 19 .. 34 => True,
+                             when others             => False),
+         when Analog  => (case Pin is
+                             when 0 .. 4 | 10 | 27 | 29   => True, --HACK: Pin 27 is NOT an AIN pin, the internal speaker module is connected to it and microbit-music implementation requires analog pin as pre-condition
+                             when others             => False),
+         when Touch   => (case Pin is
+                             when 0 | 1 | 2 | 26 => True,
+                             when others    => False));
+
+   procedure Set (Pin : Pin_Id; Value : Boolean)
+     with Pre => Supports (Pin, Digital);
+
+   function Set (Pin : Pin_Id) return Boolean
+     with Pre => Supports (Pin, Digital);
+
+   type Analog_Value is range 0 .. 1023; --since we use 10 bit resolution. But if we use 12 bit, we need to update to 4095
+
+   procedure Set_Analog_Period_Us (Period : Natural);
+   --  Set the period (in microseconds) of the PWM signal for all analog output
+   --  pins.
+
+   procedure Write (Pin : Pin_Id; Value : Analog_Value);
+
+   function Analog (Pin : Pin_Id) return Analog_Value
+     with Pre => Supports (Pin, Analog);
+   --  Read the voltagle applied to the pin. 0 means 0V 1023 means 3.3V
+
+   procedure Setup_Pins;
+
+   -- Disable NFC pins which are on by default as GPIO MB pins 8 and 9
+   Disable_NFC_Pins : Boolean := True;
+
+--Mapping between pin id and GPIO_Points
+
+Points : array (Pin_Id) of GPIO_Point :=
+  (0  => MB_P0,
+   1  => MB_P1,
+   2  => MB_P2,
+   3  => MB_P3,
+   4  => MB_P4,
+   5  => MB_P5,
+   6  => MB_P6,
+   7  => MB_P7,
+   8  => MB_P8,
+   9  => MB_P9,
+   10 => MB_P10,
+   11 => MB_P11,
+   12 => MB_P12,
+   13 => MB_P13,
+   14 => MB_P14,
+   15 => MB_P15,
+   16 => MB_P16,
+   17 => MB_P0,  --  There's no pin17, using P0 to fill in...
+   18 => MB_P0,  --  There's no pin18, using P0 to fill in...
+   19 => MB_P19,
+   20 => MB_P20,
+   21 => MB_P21,
+   22 => MB_P22,
+   23 => MB_P23,
+   24 => MB_P24,
+   25 => MB_P25,
+   26 => MB_P26,
+   27 => MB_P27,
+   28 => MB_P28,
+   29 => MB_P29,
+   30 => MB_P30,
+   31 => MB_P31,
+   32 => MB_P32,
+   33 => MB_P33,
+   34 => MB_P34
+  );
+
+
+protected Timer3 is
+   pragma Interrupt_Priority (System.Interrupt_Priority'First); -- highest priority (after RTC from ADA.Realtime)
+   procedure Init_PWM_Timer;
+   procedure PWM_Timer_Handler;
+   pragma Attach_Handler (PWM_Timer_Handler, Ada.Interrupts.Names.TIMER3_Interrupt);
+end Timer3;
+
+end MicroBit.IOsForTasking;
