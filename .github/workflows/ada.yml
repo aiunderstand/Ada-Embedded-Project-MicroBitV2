@@ -26,7 +26,7 @@ jobs:
           echo "${PWD}/gprbuild-x86_64-linux-22.0.0-1/bin" >> $GITHUB_PATH
       
       - name: Build
-        run: 'gprbuild -j0 -p itrs.gpr'
+        run: 'gprbuild -j0 -p Code/itrs.gpr'
       
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
