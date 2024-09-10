@@ -14,17 +14,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'true'
-      
-      - name: Install Alire
-        uses: alire-project/setup-alire@v1
-        with:
-          version: 2.0.1          
-      
+     
       - name: Setup GNAT ARM Toolchain
         run: >
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-avr-elf-linux64-x86_64-14.2.0-1.tar.gz
-          tar xf gnat-avr-elf-linux64-x86_64-14.2.0-1.tar.gz
-          echo "${PWD}/gnat-avr-elf-linux64-x86_64-14.2.0-1.tar.gz" >> $GITHUB_PATH          
+          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-14.2.0-1/gnat-arm-elf-linux64-14.2.0-1.tar.gz
+          tar xf gnat-arm-elf-linux64-14.2.0-1.tar.gz
+          echo "${PWD}/gnat-arm-elf-linux64-14.2.0-1.tar.gz" >> $GITHUB_PATH          
       - name: Build
         run: 'PATH="$PATH:/opt/gnat/bin" gprbuild -j0 -p'
       - name: Upload Artifact
