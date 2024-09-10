@@ -1,4 +1,4 @@
-with "libs\Ada_Drivers_Library\boards\MicroBit_v2\microbit_v2_full.gpr";
+with "libs/Ada_Drivers_Library/boards\MicroBit_v2/microbit_v2_full.gpr";
 
 project Itrs is
 
@@ -27,4 +27,4 @@ project Itrs is
       for Switches ("ada") use ("-g", "-Wl,--print-memory-usage");
    end Linker;
 
-end Itrs;  
+end Itrs;
