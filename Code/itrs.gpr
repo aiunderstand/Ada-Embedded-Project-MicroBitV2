@@ -1,4 +1,4 @@
-with "libs/Ada_Drivers_Library/boards\MicroBit_v2/microbit_v2_full.gpr";
+with "libs/Ada_Drivers_Library/boards/MicroBit_v2/microbit_v2_full.gpr";
 
 project Itrs is
 
