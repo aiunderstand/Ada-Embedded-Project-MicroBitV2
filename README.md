@@ -18,8 +18,8 @@ Say yes to install msys2
 ```shell
 alr toolchain --select
 ```
-for select GNAT version use version 14.1.3 (which is option 8)
-for select GPRBUILD use version 22.0.1 (which is option 1)
+* Select GNAT version 14.1.3+ (which is option 8)
+* Select GPRBUILD version 22.0.1+ (which is option 1)
 
 # Start
 * Click on the green "Use This Template" button and choose "create a new repository". This will create a unique repository under your github username with the contents of this template. Remember To choose a suitable name for your project
