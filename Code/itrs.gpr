@@ -7,7 +7,7 @@ project Itrs is
    for Main use ("main.adb");
 
    package Compiler is
-      for Switches ("ada") use ("-gnat2022", "-g");
+      for Switches ("ada") use ("-gnat2022", "-gnateDPROFILING=false", "-g");
    end Compiler;
 
    package Ide is
@@ -23,9 +23,8 @@ project Itrs is
       for Switches ("ada") use ("-g");
    end Builder;
 
-   package Linker is
-      for Switches ("ada") use ("-g");
+  package Linker is
+      for Switches ("ada") use ("-g", "-Wl,--print-memory-usage");
    end Linker;
 
-end Itrs;
-
+end Itrs;  
