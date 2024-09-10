@@ -17,9 +17,7 @@ jobs:
      
       - name: Setup GNAT ARM Toolchain
         run: >
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-14.2.0-1/gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          tar xf gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          echo "${PWD}/gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz/bin" >> $GITHUB_PATH          
+          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-14.2.0-1/gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz           
       - name: Build
         run: 'PATH="$PATH:/opt/gnat/bin" gprbuild -j0 -p'
       - name: Upload Artifact
