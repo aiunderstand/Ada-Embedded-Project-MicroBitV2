@@ -1,35 +1,33 @@
 name: Ada (GNAT)
-
-on:
+'on':
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
-
+    branches:
+      - main
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: 'true'
-      
-    - name: Set up GNAT toolchain
-    run: >
-        sudo apt-get update &&
-        sudo apt-get install gnat gprbuild
-        
-    - name: Build
-    run:  PATH="$PATH:/opt/gnat/bin" gprbuild -j0 -p
-
-    - name: 'Upload Artifact'
-      uses: actions/upload-artifact@v4
-      with:
-        name: MainProject
-        path: obj/main
-		   
-							  
-									   
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - name: Setup GNAT ARM Toolchain
+        run: >
+          sudo apt-get update && sudo apt-get install -y libx11-dev
+          libx11-xcb-dev && wget -O gnat-arm-elf-linux64-bin
+          https://community.download.adacore.com/v1/2ceb9d1ada2029d79556b710c6c4834cade3749f?filename=gnat-2021-20210519-arm-elf-linux64-bin
+          && chmod +x ./gnat-arm-elf-linux64-bin && wget
+          https://raw.githubusercontent.com/AdaCore/gnat_community_install_script/master/install_script.qs
+          && sudo ./gnat-arm-elf-linux64-bin --script ./install_script.qs
+          --platform minimal InstallPrefix=/opt/gnat && echo "/opt/gnat/bin" >>
+          $GITHUB_PATH
+      - name: Build
+        run: 'PATH="$PATH:/opt/gnat/bin" gprbuild -j0 -p'
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ITRS
+          path: obj/main
