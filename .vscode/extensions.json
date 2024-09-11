@@ -3,6 +3,7 @@
         "AdaCore.ada",
         "EditorConfig.EditorConfig",
         "marus25.cortex-debug",
-        "ms-vscode.cpptools"
+        "ms-vscode.cpptools",
+        "ms-vscode.vscode-serial-monitor"
     ]
 }
