@@ -1,3 +1,5 @@
+![Ada Workflow Badge](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2/actions/workflows/ada.yml/badge.svg)
+
 # Ada-Embedded-Project-MicroBitV2
 Template for USN BSc intelligent real-time systems course.
 
