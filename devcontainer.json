@@ -1,0 +1,68 @@
+{
+  "name": "Ada Development with Alire",
+  "image": "ubuntu:22.04",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true,
+      "username": "vscode",
+      "userUid": "automatic",
+      "userGid": "automatic"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "ppa": true,
+      "version": "latest"
+    }
+  },
+
+  "onCreateCommand": [
+    "bash",
+    "-c",
+    "apt-get update && apt-get install -y wget curl gnupg2 software-properties-common build-essential libgmp-dev && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o alr.zip && unzip alr.zip && chmod +x bin/alr && mv bin/alr /usr/local/bin/ && rm -rf bin alr.zip"
+  ],
+
+  "postCreateCommand": [
+    "bash",
+    "-c",
+    "alr version && alr toolchain --select && echo 'eval \"$(alr printenv)\"' >> ~/.bashrc && echo 'eval \"$(alr printenv)\"' >> ~/.zshrc"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "AdaCore.ada",
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "ada.projectFile": "alire.toml",
+        "ada.defaultCharset": "utf-8",
+        "files.associations": {
+          "*.ads": "ada",
+          "*.adb": "ada",
+          "*.gpr": "ada",
+          "alire.toml": "toml"
+        }
+      }
+    }
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder}/.alire,target=/workspaces/${localWorkspaceFolderBasename}/.alire,type=bind,consistency=cached"
+  ],
+
+  "forwardPorts": [],
+
+  "postStartCommand": "alr printenv --unix | source /dev/stdin",
+
+  "remoteUser": "vscode",
+
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  "shutdownAction": "stopContainer"
+}
