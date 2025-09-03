@@ -21,13 +21,13 @@
   "onCreateCommand": [
     "bash",
     "-c",
-    "apt-get update && apt-get install -y wget curl gnupg2 software-properties-common build-essential libgmp-dev && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o alr.zip && unzip alr.zip && chmod +x bin/alr && mv bin/alr /usr/local/bin/ && rm -rf bin alr.zip"
+    "set -e && apt-get update && apt-get install -y wget curl unzip gnupg2 software-properties-common build-essential libgmp-dev && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o alr.zip && unzip alr.zip && chmod +x bin/alr && mv bin/alr /usr/local/bin/ && rm -rf bin alr.zip && alr --version"
   ],
 
   "postCreateCommand": [
     "bash",
     "-c",
-    "alr version && alr toolchain --install gprbuild && alr toolchain --install gnat_arm_elf && alr toolchain --select gprbuild && alr toolchain --select gnat_arm_elf && echo 'eval \"$(alr printenv)\"' >> ~/.bashrc && echo 'eval \"$(alr printenv)\"' >> ~/.zshrc"
+    "set -e && alr version && alr toolchain --install gprbuild --latest && alr toolchain --install gnat_arm_elf --latest && alr toolchain --select gprbuild --latest && alr toolchain --select gnat_arm_elf --latest && echo 'eval \"$(alr printenv)\"' >> ~/.bashrc && echo 'eval \"$(alr printenv)\"' >> ~/.zshrc"
   ],
 
   "customizations": {
