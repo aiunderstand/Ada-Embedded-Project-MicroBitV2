@@ -8,7 +8,7 @@ Before using this template, the following should be installed:
 * vscode from https://code.visualstudio.com/download 
 * python 3.12.5+ from https://www.python.org/downloads/ **make sure to check "Add python.exe to path". Don't use the Windows/App Store version**. 
 * pyocd 0.34.3+ from https://pyocd.io/docs/installing by doing python3 -m pip install -U pyocd
-* git scm 2.46.0+ from https://git-scm.com/downloads
+* github desktop from https://github.com/apps/desktop OR git scm 2.46.0+ from https://git-scm.com/downloads
 * alire 2.0.1+ from https://alire.ada.dev/
 
 # Install Toolchains
@@ -58,6 +58,7 @@ alr toolchain --select
     * Close the environment variables window and **reboot computer**
 
 # Start
+* Make sure that you are logged in to your GitHub.com account
 * Click on the green "Use This Template" button and choose "create a new repository". This will create a unique repository under your github username with the contents of this template. Remember To choose a suitable name for your project
 * Clone your newly created repositry with submodules by opening a command prompt and typing
 ```shell
