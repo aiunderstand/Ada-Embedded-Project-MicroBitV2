@@ -11,7 +11,12 @@
   // Command to run when the container is first created
   "onCreateCommand": [
     "sh", "-c",
-    "apt-get update && apt-get install -y wget curl unzip build-essential bash && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o /tmp/alr.zip && unzip /tmp/alr.zip -d /tmp/ && chmod u+x /tmp/bin/alr && mv /tmp/bin/alr /usr/local/bin/ && rm -rf /tmp/alr.zip /tmp/bin && alr --version"
+    "apt-get update &&",
+    "apt-get install -y wget curl unzip build-essential bash &&",
+    "curl -L https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -o /tmp/alr.zip &&",
+    "unzip /tmp/alr.zip -d /usr/local/bin &&",
+    "rm -rf /tmp/alr.zip &&",
+    "alr --version"
   ],
   
  
