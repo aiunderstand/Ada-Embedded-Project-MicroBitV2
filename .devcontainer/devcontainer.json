@@ -10,7 +10,6 @@
   
   // Command to run when the container is first created
   "onCreateCommand": [
-    "bash", "-c",
     // Update package lists
     "apt-get update && ", 
     // Install required packages: wget (download), curl (download), unzip (extract), build tools
