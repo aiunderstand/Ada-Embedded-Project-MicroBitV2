@@ -1,6 +1,6 @@
 {
   // Container name that appears in VS Code
-  "name": "Ada for Embedded (with Alire)",
+  "name": "Ada Development with Alire",
   
   // Base Ubuntu 22.04 image
   "image": "ubuntu:22.04",
@@ -10,10 +10,14 @@
   
   // Command to run when the container is first created
   "onCreateCommand": [
-    // Open new shell
-    "bash -c ",
-    // Update package lists
-    "apt-get update"
+    "sh", "-c",
+    "apt-get update && apt-get install -y wget curl unzip build-essential bash && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o /tmp/alr.zip && unzip /tmp/alr.zip -d /tmp/ && chmod u+x /tmp/bin/alr && mv /tmp/bin/alr /usr/local/bin/ && rm -rf /tmp/alr.zip /tmp/bin && alr --version"
+  ],
+  
+  // Command to run after the container is created but before VS Code connects
+  "postCreateCommand": [
+    "bash", "-c",
+    "alr version && alr toolchain --install gprbuild && alr toolchain --install gnat_arm_elf && alr toolchain --select gprbuild && alr toolchain --select gnat_arm_elf"
   ],
   
   // VS Code extensions to install
