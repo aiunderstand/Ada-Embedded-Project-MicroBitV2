@@ -10,7 +10,8 @@
   
   // Command to run when the container is first created
   "onCreateCommand": [
-    
+    // Open new shell
+    "bash -c "
     // Update package lists
     "apt-get update"
   ],
