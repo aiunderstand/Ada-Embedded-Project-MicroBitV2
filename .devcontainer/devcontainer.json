@@ -1,68 +1,59 @@
 {
+  // Container name that appears in VS Code
   "name": "Ada Development with Alire",
+  
+  // Base Ubuntu 22.04 image
   "image": "ubuntu:22.04",
   
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "configureZshAsDefaultShell": true,
-      "installOhMyZsh": true,
-      "upgradePackages": true,
-      "username": "vscode",
-      "userUid": "automatic",
-      "userGid": "automatic"
-    },
-    "ghcr.io/devcontainers/features/git:1": {
-      "ppa": true,
-      "version": "latest"
-    }
-  },
-
+  // Run as root during container creation to install packages
+  "containerUser": "root",
+  
+  // Command to run when the container is first created
   "onCreateCommand": [
-    "bash",
-    "-c",
-    "set -e && sudo apt-get update && sudo apt-get install -y wget curl unzip gnupg2 software-properties-common build-essential libgmp-dev && curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o alr.zip && unzip alr.zip && chmod +x bin/alr && sudo mv bin/alr /usr/local/bin/ && rm -rf bin alr.zip && alr --version"
+    "bash", "-c",
+    // Update package lists
+    "apt-get update && " +
+    // Install required packages: wget (download), curl (download), unzip (extract), build tools
+    "apt-get install -y wget curl unzip build-essential && " +
+    // Download the latest Alire binary for Linux
+    "curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o /tmp/alr.zip && " +
+    // Extract the Alire binary
+    "unzip /tmp/alr.zip -d /tmp/ && " +
+    // Make the binary executable
+    "chmod +x /tmp/bin/alr && " +
+    // Move it to system PATH
+    "mv /tmp/bin/alr /usr/local/bin/ && " +
+    // Clean up temporary files
+    "rm -rf /tmp/alr.zip /tmp/bin && " +
+    // Verify installation
+    "alr --version"
   ],
-
+  
+  // Command to run after the container is created but before VS Code connects
   "postCreateCommand": [
-    "bash",
-    "-c",
-    "set -e && alr version && alr toolchain --install gprbuild --latest && alr toolchain --install gnat_arm_elf --latest && alr toolchain --select gprbuild --latest && alr toolchain --select gnat_arm_elf --latest && echo 'eval \"$(alr printenv)\"' >> ~/.bashrc && echo 'eval \"$(alr printenv)\"' >> ~/.zshrc"
+    "bash", "-c",
+    // Show Alire version
+    "alr version && " +
+    // Install the latest gprbuild toolchain
+    "alr toolchain --install gprbuild && " +
+    // Install the latest gnat_arm_elf toolchain for ARM development
+    "alr toolchain --install gnat_arm_elf && " +
+    // Select gprbuild as active toolchain
+    "alr toolchain --select gprbuild && " +
+    // Select gnat_arm_elf as active toolchain
+    "alr toolchain --select gnat_arm_elf"
   ],
-
+  
+  // VS Code extensions to install
   "customizations": {
     "vscode": {
       "extensions": [
-        "AdaCore.ada",
-        "ms-vscode.cpptools",
-        "ms-vscode.cmake-tools",
-        "streetsidesoftware.code-spell-checker"
-      ],
-      "settings": {
-        "terminal.integrated.defaultProfile.linux": "zsh",
-        "ada.projectFile": "alire.toml",
-        "ada.defaultCharset": "utf-8",
-        "files.associations": {
-          "*.ads": "ada",
-          "*.adb": "ada",
-          "*.gpr": "ada",
-          "alire.toml": "toml"
-        }
-      }
+        // Ada language support
+        "AdaCore.ada"
+      ]
     }
   },
-
-  "mounts": [
-    "source=${localWorkspaceFolder}/.alire,target=/workspaces/${localWorkspaceFolderBasename}/.alire,type=bind,consistency=cached"
-  ],
-
-  "forwardPorts": [],
-
-  "postStartCommand": "alr printenv --unix | source /dev/stdin",
-
-  "remoteUser": "vscode",
-
-  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-
-  "shutdownAction": "stopContainer"
+  
+  // Default user for the development session
+  "remoteUser": "root"
 }
