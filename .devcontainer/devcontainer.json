@@ -12,19 +12,19 @@
   "onCreateCommand": [
     "bash", "-c",
     // Update package lists
-    "apt-get update && " 
+    "apt-get update && ", 
     // Install required packages: wget (download), curl (download), unzip (extract), build tools
-    "apt-get install -y wget curl unzip build-essential && "
+    "apt-get install -y wget curl unzip build-essential && ",
     // Download the latest Alire binary for Linux
-    "curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o /tmp/alr.zip && " +
+    "curl -L https://github.com/alire-project/alire/releases/latest/download/alr-$(uname -m)-linux.zip -o /tmp/alr.zip && ",
     // Extract the Alire binary
-    "unzip /tmp/alr.zip -d /tmp/ && " 
+    "unzip /tmp/alr.zip -d /tmp/ && ", 
     // Make the binary executable
-    "chmod +x /tmp/bin/alr && " 
+    "chmod +x /tmp/bin/alr && ", 
     // Move it to system PATH
-    "mv /tmp/bin/alr /usr/local/bin/ && " 
+    "mv /tmp/bin/alr /usr/local/bin/ && ", 
     // Clean up temporary files
-    "rm -rf /tmp/alr.zip /tmp/bin && "
+    "rm -rf /tmp/alr.zip /tmp/bin && ",
     // Verify installation
     "alr --version"
   ],
