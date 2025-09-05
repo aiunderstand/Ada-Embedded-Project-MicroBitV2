@@ -11,8 +11,7 @@
   // Command to run when the container is first created
   "onCreateCommand": [
     "sh", "-c",
-    "curl -L https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -o /tmp/alr.zip &&",
-    "unzip /tmp/alr.zip -d /usr/local/bin"
+    "wget -q https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O alr.zip"
   ],
   
  
