@@ -14,9 +14,7 @@
     "apt-get update &&",
     "apt-get install -y wget curl unzip build-essential bash &&",
     "curl -L https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -o /tmp/alr.zip &&",
-    "unzip /tmp/alr.zip -d /usr/local/bin &&",
-    "rm -rf /tmp/alr.zip &&",
-    "alr --version"
+    "unzip /tmp/alr.zip -d /usr/local/bin &&"
   ],
   
  
