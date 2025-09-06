@@ -1,31 +1,36 @@
 {
   // Container name that appears in VS Code
   "name": "Ada Development with Alire",
-  
-  // Base Ubuntu 22.04 image
-  "image": "ubuntu:22.04",
-  
+
+  // Base Ubuntu (latest LTS) image
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
   // Run as root during container creation to install packages
   "containerUser": "root",
-  
+
   // Command to run when the container is first created
   "onCreateCommand": [
     "sh", "-c",
-    "wget -q https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O alr.zip"
-  ],
-  
- 
-  
+    "wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip && unzip /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
+   ],
+
+  "postCreateCommand": [
+    "sh", "-c",
+    "export PATH=/workspaces/alr/bin:$PATH && cd .. && pwd && alr --version && alr get gprbuild && alr get gnat_arm_elf && export PATH=/root/.alire/env/gnat_arm_elf/bin:/root/.alire/env/gprbuild/bin:$PATH"
+   ],
+
   // VS Code extensions to install
   "customizations": {
     "vscode": {
       "extensions": [
-        // Ada language support
-        "AdaCore.ada"
+        "AdaCore.ada",
+        "EditorConfig.EditorConfig",
+        "ms-vscode.cpptools",
+        "ms-vscode.vscode-serial-monitor"
       ]
     }
   },
-  
+
   // Default user for the development session
   "remoteUser": "root"
 }
