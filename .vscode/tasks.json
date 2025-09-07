@@ -20,18 +20,11 @@
             "dependsOn":["Build"]
 		},
 		{
-			"type": "ada",
-			"command": "gprbuild",
-			"args": [
-				"${command:ada.gprProjectArgs}",
-				"Code/src/main.adb",
-				"-cargs:ada",
-				"-gnatef",
-                //"-largs -Wl,-Map=map.txt" used in gnatstudio, needed here?
-			],
-			"problemMatcher": [
-				"$ada"
-			],
+			"type": "shell",
+            "command": "zsh -c 'source /root/.zshrc && gprbuild -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef'",
+            "problemMatcher": [
+                "$ada"
+            ],
 			"group": "build",
 			"label": "Build"
 		},
