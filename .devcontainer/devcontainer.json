@@ -30,7 +30,8 @@
                 "AdaCore.ada",
                 "EditorConfig.EditorConfig",
                 "ms-vscode.cpptools",
-                "ms-vscode.vscode-serial-monitor"
+                "ms-vscode.vscode-serial-monitor",
+                "awsxxf.serialterminal"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "zsh",
