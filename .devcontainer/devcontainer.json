@@ -15,7 +15,7 @@
     "onCreateCommand": [
         "sh",
         "-c",
-        "apt update && apt-get -y install libusb-1.0-0-dev && pip install pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
+        "apt update && pip install libusb && pip install pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
     ],
     // command to run after the container is created
     // export alire to persistent path. Go to workspaces root directoyr. check alire version. install gprbuild and gnat_arm_elf. export the paths to the installed tools and persistent path.
