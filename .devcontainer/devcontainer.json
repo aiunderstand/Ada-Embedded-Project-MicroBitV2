@@ -1,36 +1,45 @@
 {
-  // Container name that appears in VS Code
-  "name": "Ada Development with Alire",
-
-  // Base Ubuntu (latest LTS) image
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-
-  // Run as root during container creation to install packages
-  "containerUser": "root",
-
-  // Command to run when the container is first created
-  "onCreateCommand": [
-    "sh", "-c",
-    "wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip && unzip /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
-   ],
-
-  "postCreateCommand": [
-    "sh", "-c",
-    "export PATH=/workspaces/alr/bin:$PATH && cd .. && pwd && alr --version && alr get gprbuild && alr get gnat_arm_elf && export PATH=/root/.alire/env/gnat_arm_elf/bin:/root/.alire/env/gprbuild/bin:$PATH"
-   ],
-
-  // VS Code extensions to install
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "AdaCore.ada",
-        "EditorConfig.EditorConfig",
-        "ms-vscode.cpptools",
-        "ms-vscode.vscode-serial-monitor"
-      ]
-    }
-  },
-
-  // Default user for the development session
-  "remoteUser": "root"
+    // Container name that appears in VS Code
+    "name": "Ada Development with Alire",
+    // Base Ubuntu (latest LTS) image
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+    "features": {
+        "ghcr.io/devcontainers/features/python:1": {
+            "version": "3.13.7"
+        }
+    },
+    // Run as root during container creation to install packages
+    "containerUser": "root",
+    // Command to run when the container is first created
+    // download alire depending on architecture. unzip it. make it an executable and remove the zip file. put it in /workspaces/alr. create a pesistent path file
+    "onCreateCommand": [
+        "sh",
+        "-c",
+        "pip install pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
+    ],
+    // command to run after the container is created
+    // export alire to persistent path. Go to workspaces root directoyr. check alire version. install gprbuild and gnat_arm_elf. export the paths to the installed tools and persistent path.
+    "postCreateCommand": [
+        "sh",
+        "-c",
+        "cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "AdaCore.ada",
+                "EditorConfig.EditorConfig",
+                "ms-vscode.cpptools",
+                "ms-vscode.vscode-serial-monitor"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "editor.formatOnSave": true,
+                "ada.projectFile": "Code/itrs.gpr"
+                //"editor.defaultFormatter": "esbenp.prettier-vscode",
+            }
+        }
+    },
+    // Default user for the development session
+    "remoteUser": "root"
 }
