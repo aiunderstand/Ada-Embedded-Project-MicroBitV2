@@ -22,7 +22,7 @@
     "postCreateCommand": [
         "sh",
         "-c",
-        "cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc"
+        "git submodule update --init --recursive && cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc"
     ],
     "customizations": {
         "vscode": {
