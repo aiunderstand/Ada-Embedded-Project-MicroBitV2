@@ -4,8 +4,8 @@
         "EditorConfig.EditorConfig",
         "marus25.cortex-debug",
         "ms-vscode.cpptools",
-        "ms-vscode.vscode-serial-monitor",
+        "ms-vscode.vscode-serial-monitor", 
+        "awsxxf.serialterminal", 
         "eclipse-cdt.serial-monitor"
-
     ]
 }
