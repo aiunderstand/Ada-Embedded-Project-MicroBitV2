@@ -2,6 +2,7 @@
     "recommendations": [
         "AdaCore.ada",
         "EditorConfig.EditorConfig",
+        "mcu-debug.debug-tracker-vscode",
         "marus25.cortex-debug",
         "ms-vscode.cpptools",
         "ms-vscode.vscode-serial-monitor", 
