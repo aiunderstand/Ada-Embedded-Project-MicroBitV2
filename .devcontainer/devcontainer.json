@@ -16,13 +16,8 @@
     "onCreateCommand": [
         "sh",
         "-c",
-        "apt update && apt install -y libusb-1.0-0-dev libusb-1.0-0 libusb-dev udev && pip install pyusb pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip -o /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
+        "apt update && apt install -y libusb-1.0-0-dev libusb-1.0-0 libusb-dev udev && pip install libusb pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip -o /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip && git submodule update --init --recursive"
     ],
-    "updateContentCommand": [
-      "sh",
-      "-c",
-      "git submodule update --init --recursive"
-    ],    
     "postCreateCommand": [
         "sh",
         "-c",
@@ -36,7 +31,9 @@
                 "ms-vscode.cpptools",
                 "ms-vscode.vscode-serial-monitor",
                 "awsxxf.serialterminal",
-                "eclipse-cdt.serial-monitor"
+                "eclipse-cdt.serial-monitor",
+                "mcu-debug.debug-tracker-vscode",
+                "marus25.cortex-debug"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "zsh",
