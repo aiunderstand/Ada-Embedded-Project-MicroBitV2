@@ -1,4 +1,5 @@
 {
     "ada.projectFile": "Code/itrs.gpr",
-    "cortex-debug.armToolchainPrefix": "arm-eabi"
+    "cortex-debug.armToolchainPrefix": "arm-eabi",
+    "sarif-viewer.connectToGithubCodeScanning": "off"
 }
