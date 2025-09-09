@@ -8,20 +8,22 @@
     },
     "containerUser": "root",
     "runArgs": [
-        "--privileged"
+        "--privileged",
+        "--device-cgroup-rule=c 189:* rmw"
     ],
     "mounts": [
-        "source=/dev,target=/dev,type=bind"
+        "source=/dev,target=/dev,type=bind",
+        "source=/run/udev,target=/run/udev,type=bind,readonly"
     ],
     "onCreateCommand": [
         "sh",
         "-c",
-        "apt update && apt install -y libusb-1.0-0-dev libusb-1.0-0 libusb-dev udev && pip install libusb pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip -o /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip && git submodule update --init --recursive"
+        "apt update && apt install -y libusb-1.0-0-dev libusb-1.0-0 libusb-dev udev usbutils && pip install libusb pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip -o /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
     ],
     "postCreateCommand": [
         "sh",
         "-c",
-        "cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc && echo 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0d28\", ATTR{idProduct}==\"0204\", MODE=\"0666\"' > /etc/udev/rules.d/50-microbit.rules && service udev restart || true"
+        "cd /workspaces/Ada-Embedded-Project-MicroBitV2 && git submodule update --init --recursive && cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc && echo 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0d28\", ATTR{idProduct}==\"0204\", MODE=\"0666\"' > /etc/udev/rules.d/50-microbit.rules && echo 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0d28\", ATTR{idProduct}==\"0204\", GROUP=\"root\"' >> /etc/udev/rules.d/50-microbit.rules && udevadm control --reload-rules && udevadm trigger || true"
     ],
     "customizations": {
         "vscode": {
