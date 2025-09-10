@@ -38,14 +38,14 @@ alr toolchain --select
     * Close the environment variables window and **reboot computer**
 
 * MacOs
-    * Open terminal app
+    * Open terminal app and create the zsh shell file by doing:
     * ```shell
         nano ~/.zshrc 
       ```
-    * add lines
-        * $ export PATH="~/.local/share/alire/cache/toolchains/gprbuild_[VERSION]/bin/:$PATH"
-        * $ export PATH="~/.local/share/alire/cache/toolchains/gnat_arm_elf_[VERSION]/bin/:$PATH"        
-    * Close the environment variables window and **reboot computer**
+    * add lines (make sure to look up which version you installed!). IMPORTANT any mistake in this file will prevent your terminal to run commands. If you notice that you cannont run commands like ls, open finder and go to your username and open the zshrc file to edit it manually. This file is hidden so you need to uses COMMAND + SHIFT + . to enable hidden files in Finder.
+        * $ export PATH=$PATH:~/.local/share/alire/toolchains/gprbuild_[VERSION]/bin
+        * $ export PATH=$PATH:~/.local/share/alire/toolchains/gnat_arm_elf_[VERSION]/bin   
+    * Close the terminal. 
       
 * Linux
     * Open terminal app
