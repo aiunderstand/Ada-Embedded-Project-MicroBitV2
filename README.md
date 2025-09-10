@@ -9,7 +9,7 @@ Before using this template, the following should be installed:
 * python 3.12.5+ from https://www.python.org/downloads/ **make sure to check "Add python.exe to path". Don't use the Windows/App Store version**. 
 * pyocd 0.34.3+ by doing py -m pip install -U pyocd
 * github desktop from https://github.com/apps/desktop OR git scm 2.46.0+ from https://git-scm.com/downloads
-* alire 2.0.1+ from https://alire.ada.dev/
+* alire 2.1.0+ from https://alire.ada.dev/ or from https://github.com/alire-project/alire/releases
 
 # Install Toolchains
 Open command prompt and type 
