@@ -84,6 +84,47 @@ python3 tools/mb.py list
   ```
 * Try Ctrl+Shift+B after the erase. Try removing the USB cable and using another USB port or reboot the computer if the problem persists.
 
+# How to flash, and what works where
+Flashing needs USB access to the board, and not every environment has it. Pick
+the first row that applies to you.
+
+| Route | What you need | Windows | macOS | Linux | Codespace |
+|---|---|---|---|---|---|
+| Drag `build/main.hex` onto the MICROBIT drive | nothing | yes | yes | yes | download it first |
+| `Ctrl+Shift+B` in VS Code on your own machine | `pip install pyocd` | yes | yes | yes | no |
+| Container / Codespace, flashing from the host | see above | yes | yes | yes | no |
+| USB straight into a container | Linux host only | no | no | yes | no |
+
+**Containers build; they usually cannot flash.** Docker Desktop on macOS and
+Windows cannot pass a USB device through to the Linux VM, and a cloud Codespace
+has no USB at all. This is a limitation of the platform, not of this template.
+Build in the container, then drag `build/main.hex` onto the MICROBIT drive.
+
+Two ways to flash from a container anyway, if you want to:
+
+* **Linux host** - it just works. Install the udev rule first so the device is
+  writable by a normal user:
+  ```shell
+  sudo cp tools/udev/50-microbit.rules /etc/udev/rules.d/
+  sudo udevadm control --reload-rules && sudo udevadm trigger
+  ```
+  The rule must be on the **host**; udev runs on the host kernel, so a rule
+  written inside a container does nothing.
+
+* **Windows, via USB/IP** - [usbipd-win](https://github.com/dorssel/usbipd-win)
+  shares a USB device with WSL2 and with Docker Desktop 4.35+:
+  ```powershell
+  winget install usbipd
+  usbipd list                      # find the micro:bit's BUSID
+  usbipd bind --busid <BUSID>      # needs an elevated PowerShell, once per device
+  usbipd attach --wsl --busid <BUSID>
+  ```
+  Be aware the micro:bit **re-enumerates after a mass-erase and after some
+  flashes**, so the device detaches and must be re-attached (`--auto-attach`
+  keeps a process running to do this for you). There is no macOS equivalent:
+  Docker Desktop's USB/IP support needs a USB/IP server on the host and macOS
+  has no complete implementation.
+
 # Flashing without installing anything (GitHub Actions build)
 Every push is built by GitHub Actions, which publishes a ready-to-flash firmware image. This is the
 easiest route if your local toolchain is not working yet, and the only route if you are working in a

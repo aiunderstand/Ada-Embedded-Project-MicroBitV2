@@ -1,0 +1,12 @@
+# Install this on the HOST, not inside a container:
+#   sudo cp tools/udev/50-microbit.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# udev runs on the host kernel, so a rule written inside a container has no
+# effect on device permissions -- which is why the previous in-container rule
+# never did anything.
+#
+# 0d28:0204 is the DAPLink (CMSIS-DAP) interface on the BBC micro:bit v2.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0d28", ATTR{idProduct}=="0204", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0d28", ATTRS{idProduct}=="0204", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0d28", ATTRS{idProduct}=="0204", MODE="0666"
