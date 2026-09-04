@@ -1,19 +1,24 @@
 {
-    "name": "Ada Embedded (Micro:Bit v2) with Alire",
-    "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-    "features": {
-        "ghcr.io/devcontainers/features/python:1": {
-            "version": "3.13"
-        }
+    "name": "Ada Embedded (Micro:Bit v2)",
+
+    // Built from the Dockerfile here, but with the prebuilt image as a layer
+    // cache. In practice every layer hits, so a Codespace starts in about a
+    // minute instead of downloading and unpacking ~2 GB of toolchain.
+    //
+    // "build" rather than "image" on purpose: if the published image is ever
+    // unavailable -- a fork, a private package, a registry outage -- this still
+    // works. It just builds locally and takes longer, instead of failing to
+    // start at all.
+    "build": {
+        "dockerfile": "Dockerfile",
+        "cacheFrom": "ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2"
     },
 
-    "containerUser": "root",
-    "remoteUser": "root",
+    "remoteUser": "vscode",
 
-    // USB passthrough only ever works on a Linux host. Docker Desktop on macOS
-    // and Windows cannot pass USB to the Linux VM, and a cloud Codespace has no
-    // USB at all -- those can build, but you flash by dragging build/main.hex
-    // onto the MICROBIT drive. See the README.
+    // USB passthrough only works on a Linux host. Docker Desktop on macOS and
+    // Windows cannot pass USB to its Linux VM, and a Codespace has no USB at
+    // all -- those build here and flash from the browser. See setup/.
     "runArgs": [
         "--privileged",
         "--device-cgroup-rule=c 189:* rmw"
@@ -23,18 +28,13 @@
         "source=/run/udev,target=/run/udev,type=bind,readonly"
     ],
 
-    // onCreateCommand runs before the workspace content is guaranteed to be
-    // final; updateContentCommand is the step that also runs during Codespaces
-    // prebuilds, which is where the submodule must be fetched.
-    "onCreateCommand": "bash .devcontainer/setup.sh",
+    // updateContentCommand also runs during Codespaces prebuilds, which is
+    // where the submodule has to be fetched. safe.directory is needed because
+    // the workspace is checked out by a different uid than the container user.
     "updateContentCommand": "git config --global --add safe.directory '*' && git submodule update --init --recursive",
-    "postCreateCommand": "python3 tools/mb.py doctor",
 
-    // The toolchain is symlinked into /usr/local/bin by setup.sh, so PATH needs
-    // no per-install hashed directory and nothing has to source a shell rc.
-    "remoteEnv": {
-        "PATH": "/usr/local/bin:${containerEnv:PATH}"
-    },
+    // Tells the student straight away whether their environment is usable.
+    "postCreateCommand": "python3 tools/mb.py doctor",
 
     "customizations": {
         "vscode": {
@@ -51,10 +51,13 @@
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",
                 "editor.formatOnSave": true
-                // Deliberately no "ada.projectFile": it would override the
-                // committed .als.json in every Codespace and stop
+                // Deliberately no "ada.projectFile": a VS Code setting in any
+                // scope overrides the committed .als.json and would stop
                 // "mb.py als --use <project>" from switching projects.
-            }
+            },
+            // Open the file the student is meant to edit, so a fresh Codespace
+            // lands on their program rather than an empty editor.
+            "openFiles": ["Code/src/main.adb"]
         }
     }
 }

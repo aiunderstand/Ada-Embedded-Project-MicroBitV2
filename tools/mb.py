@@ -468,6 +468,25 @@ def cmd_als(args) -> int:
     return 0
 
 
+def _version_line(out: str) -> str:
+    """First line of a --version that is actually the version.
+
+    Commands run through "alr exec" can be preceded by Alire's own chatter
+    ("Note: Synchronizing workspace..."), which would otherwise be reported as
+    the tool's version in doctor output.
+    """
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith(("Note:", "Warning:", "Info:", "ERROR:")):
+            continue
+        # Alire also emits plain status lines like "Nothing to update."; a real
+        # version string always carries a digit.
+        if not any(c.isdigit() for c in line):
+            continue
+        return line
+    return ""
+
+
 def cmd_doctor(args) -> int:
     """Exit non-zero only for build-critical tools; flashing tools are optional."""
     print("Build tools (required):")
@@ -477,7 +496,7 @@ def cmd_doctor(args) -> int:
                         ("arm-eabi-gcc", ["alr", "exec", "--", "arm-eabi-gcc", "-dumpversion"]),
                         (OBJCOPY, ["alr", "exec", "--", OBJCOPY, "--version"])):
         rc, out = capture(probe)
-        first = out.strip().splitlines()[0] if out.strip() else ""
+        first = _version_line(out)
         if rc == 0:
             print(f"  OK       {name}: {first}")
         else:
@@ -488,7 +507,7 @@ def cmd_doctor(args) -> int:
     for name, probe in (("pyocd", ["pyocd", "--version"]),
                         ("arm-eabi-gdb", ["alr", "exec", "--", "arm-eabi-gdb", "--version"])):
         rc, out = capture(probe)
-        first = out.strip().splitlines()[0] if out.strip() else ""
+        first = _version_line(out)
         print(f"  {'OK      ' if rc == 0 else 'missing '} {name}"
               + (f": {first}" if rc == 0 else ""))
     print(f"  {'OK       probe detected' if probe_present() else 'missing  no debug probe attached'}")
