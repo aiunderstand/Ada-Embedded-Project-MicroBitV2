@@ -145,7 +145,10 @@
                 "zfp/text_scrolling",
                 "zfp/ultrasonic",
                 "zfp/wireless_radio",
-                "spark/bounded_queue"
+                "spark/bounded_queue",
+                "spark/line_follower",
+                "spark/saturating_math",
+                "spark/sense_think_act"
             ]
         }
     ]
