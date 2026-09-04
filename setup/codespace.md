@@ -16,8 +16,12 @@ In **your** repository (the one you made with *Use this template*):
 2. Choose the **Codespaces** tab.
 3. Click **Create codespace on main**.
 
-VS Code opens in your browser. The first start takes a couple of minutes while
-it prepares the toolchain — you only pay this once per Codespace.
+VS Code opens in your browser. The first start takes a few minutes while it
+downloads the prebuilt toolchain image (about 600 MB), so it depends on the
+connection.
+
+**You only pay that once per Codespace.** Stopping and reopening the same one
+costs nothing — it is only *creating* a Codespace that downloads anything.
 
 When it is ready, the terminal at the bottom shows the setup check:
 
@@ -54,9 +58,6 @@ mb: firmware: build/main.elf, build/main.hex, build/main.bin
 ```
 
 `build/main.hex` is the file you flash.
-
-> A Codespace runs on a machine in a data centre, so it has **no USB port** and
-> cannot flash your board directly. That is what the next step is for.
 
 ## 4. Flash the board, straight from the Codespace
 

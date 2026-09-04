@@ -20,8 +20,7 @@ Everything below assumes you are working in *your* repository, not this one.
 
 | | Path | You install | Flashing | Debugging (F5) |
 |---|---|---|---|---|
-| 🟢 | **[In your browser](setup/codespace-browser.md)** | **nothing** | from the browser | no |
-| 🟡 | **[Browser machine, local editor](setup/codespace-vscode.md)** | VS Code + 1 extension | from the browser | no |
+| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | no |
 | 🔵 | **[On your own machine](setup/local.md)** | VS Code, Python, Alire | plugged in, or browser | **yes** |
 
 **Not sure?** Start with the browser. It needs nothing installed, works on a
