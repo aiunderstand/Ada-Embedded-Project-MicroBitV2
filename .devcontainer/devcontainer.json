@@ -1,18 +1,27 @@
 {
     "name": "Ada Embedded (Micro:Bit v2)",
 
-    // Built from the Dockerfile here, but with the prebuilt image as a layer
-    // cache. In practice every layer hits, so a Codespace starts in about a
-    // minute instead of downloading and unpacking ~2 GB of toolchain.
+    // Pull the prebuilt toolchain image; do not build anything here.
     //
-    // "build" rather than "image" on purpose: if the published image is ever
-    // unavailable -- a fork, a private package, a registry outage -- this still
-    // works. It just builds locally and takes longer, instead of failing to
-    // start at all.
-    "build": {
-        "dockerfile": "Dockerfile",
-        "cacheFrom": "ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2"
-    },
+    // An earlier version used "build" + "cacheFrom" pointing at this same image,
+    // on the theory that it would fall back to a local build if the image were
+    // ever unavailable. Measured in a real Codespace, that never hit the cache
+    // and took 3m 4s, re-downloading the whole toolchain:
+    //
+    //   #6  importing cache manifest from ghcr.io/...   DONE 1.7s
+    //   #7  RUN apt-get update ...                      DONE 29.2s   <- rebuilt
+    //   #11 RUN alr toolchain --select ...              DONE 78.9s   <- re-downloaded
+    //
+    // Two reasons it cannot work. The dev container CLI does not build this
+    // Dockerfile as written -- it rewrites it as "Dockerfile-with-features",
+    // injecting _DEV_CONTAINERS_BASE_IMAGE and a renamed target stage, so the
+    // layer hashes never match. And --cache-from against a plain image needs
+    // inline cache metadata the published image does not carry.
+    //
+    // The Dockerfile stays in this folder: it is the source of this image, and
+    // you can still build it by hand. The publishing workflow asserts the image
+    // is anonymously pullable, so a failure there is loud rather than silent.
+    "image": "ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2",
 
     "remoteUser": "vscode",
 
