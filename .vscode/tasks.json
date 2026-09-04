@@ -1,59 +1,136 @@
 {
-	"version": "2.0.0",
-	"tasks": [
+    // Every task is "type": "process" -- VS Code runs the program directly with
+    // no shell, so there is nothing for zsh / cmd / PowerShell to quote
+    // differently and these tasks behave identically on macOS, Linux, Windows
+    // and inside the devcontainer.
+    //
+    // mb.py drives everything through Alire, so no PATH setup is needed.
+    "version": "2.0.0",
+    "tasks": [
         {
-			"type": "shell",
-			"command": "pyocd",
-			"args": [
-				"load",
-                "-t",
-                "nrf52833",
-                "--format",
-                "elf",
-				"Code/obj/main"
-			],
-			"group": {
-                "kind": "build",
-                "isDefault": true
-            },
-			"label": "Build & Flash",
-            "dependsOn":["Build"]
-		},
-		{
-			"type": "shell",
-            "command": "zsh -c 'source /root/.zshrc && gprbuild -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef'",
-            "problemMatcher": [
-                "$ada"
-            ],
-			"group": "build",
-			"label": "Build"
-		},
+            "label": "Build & Flash",
+            "detail": "Build the template and flash it to the micro:bit",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "flash"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "group": { "kind": "build", "isDefault": true }
+        },
         {
-			"type": "shell",
-			"command": "pyocd",
-			"args": [
-				"load",
-                "-t",
-                "nrf52833",
-                "--format",
-                "elf",
-				"Code/obj/main"
-			],
-            "group": "build",
-			"label": "Flash"
-		},
+            "label": "Build",
+            "detail": "Build the template (Code/itrs.gpr)",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "build"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "group": "build"
+        },
         {
-			"type": "shell",
-			"command": "pyocd",
-			"args": [
-				"erase",
-                "--mass",
-                "-t",
-                "nrf52833"
-			],
-            "group": "build",
-			"label": "Erase"
-		}
-	]
-
+            "label": "Choose project...",
+            "detail": "Pick any example and build + flash it, without reopening the folder",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "flash", "--use", "${input:project}"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "group": "build"
+        },
+        {
+            // Deliberately NOT the default build task: with no editor focused
+            // VS Code cannot resolve ${fileDirname} and refuses to start.
+            "label": "Build the file I'm looking at",
+            "detail": "Build the example containing the currently open file",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "flash", "--use-dir", "${fileDirname}"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "group": "build"
+        },
+        {
+            "label": "Prove (SPARK)",
+            "detail": "Run gnatprove in flow mode",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "prove"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "group": "build"
+        },
+        {
+            "label": "Erase",
+            "detail": "Mass-erase the micro:bit (try this if flashing times out)",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "erase"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            "label": "Doctor",
+            "detail": "Check that the toolchain and probe are usable",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "doctor"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build all (regression check)",
+            "detail": "Build every project; known failures are reported as XFAIL",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "build", "--all"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "project",
+            "type": "pickString",
+            "description": "Which project?",
+            "default": "template",
+            "options": [
+                "template",
+                "ravenscar/BLE_beacon",
+                "ravenscar/accelerometer",
+                "ravenscar/analog_in",
+                "ravenscar/analog_out",
+                "ravenscar/buttons",
+                "ravenscar/containers",
+                "ravenscar/digital_in",
+                "ravenscar/digital_out",
+                "ravenscar/magnetometer",
+                "ravenscar/math_functions",
+                "ravenscar/motor_drive_dfr0548",
+                "ravenscar/motor_drive_four_wheels",
+                "ravenscar/music",
+                "ravenscar/pin_interrupt_example",
+                "ravenscar/servos",
+                "ravenscar/tasking_calculate_execution_time",
+                "ravenscar/tasking_clock",
+                "ravenscar/tasking_project_linetracker",
+                "ravenscar/tasking_project_sense_think_act",
+                "ravenscar/text_scrollling",
+                "ravenscar/ultrasonic",
+                "ravenscar/wireless_radio",
+                "ravenscar/wireless_radio_car_example/Car",
+                "ravenscar/wireless_radio_car_example/Controller",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wired",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WiredRadioReceiver",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WirelessRadioController"
+            ]
+        }
+    ]
 }

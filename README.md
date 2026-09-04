@@ -5,57 +5,32 @@ Template for USN BSc intelligent real-time systems course.
 
 # Requirements Windows / Mac / Linux
 Before using this template, the following should be installed:
-* vscode from https://code.visualstudio.com/download 
-* python 3.12.5+ from https://www.python.org/downloads/ **make sure to check "Add python.exe to path". Don't use the Windows/App Store version**. 
-* pyocd 0.34.3+ by doing py -m pip install -U pyocd
-* github desktop from https://github.com/apps/desktop OR git scm 2.46.0+ from https://git-scm.com/downloads
+* vscode from https://code.visualstudio.com/download
+* python 3.12+ from https://www.python.org/downloads/ **make sure to check "Add python.exe to path". Don't use the Windows/App Store version**.
 * alire 2.1.0+ from https://alire.ada.dev/ or from https://github.com/alire-project/alire/releases
+* github desktop from https://github.com/apps/desktop OR git scm 2.46.0+ from https://git-scm.com/downloads
+* pyocd, only if you want to flash and debug from your own machine: `pip install -U pyocd`
 
-# Install Toolchains
-Open command prompt and type 
+# Install the toolchain
+Alire downloads and manages the Ada compiler for you. Open a terminal in the
+project folder and run:
+
 ```shell
-alr
+alr toolchain --select gnat_arm_elf=15.1.2 gprbuild=25.0.1
 ```
-Say yes to install msys2
+
+That is the whole installation. **You do not need to edit PATH, and you do not
+need to reboot.** Every build in this template runs through Alire, which sets
+the environment itself.
+
+To check everything is in place:
+
 ```shell
-alr toolchain --select
+python3 tools/mb.py doctor
 ```
-* Select GNAT_ARM_ELF version 14.1.3+ 
-* Select GPRBUILD version 22.0.1+ 
 
-# Update global environment variables (PATH)
-* Windows
-    * Open powershell as administrator
-    * ```shell
-        ./rundll32.exe sysdm.cpl,EditEnvironmentVariables
-      ```      
-    * goto system variables > path > new and add
-        * C:\Users\[USERNAME]\AppData\Local\alire\cache\toolchains\gprbuild_[VERSION]\bin
-        * C:\Users\[USERNAME]\AppData\Local\alire\cache\toolchains\gnat_arm_elf_[VERSION]\bin
-        * C:\Program Files\Alire\bin (if you installed it in default)
-        * C:\Users\[USERNAME]\AppData\Local\Programs\Python\[YOUR_PYTHON_VERSION]
-        * C:\Users\[USERNAME]\AppData\Local\Programs\Python\[YOUR_PYTHON_VERSION]\Scripts
-    * Close the environment variables window and **reboot computer**
-
-* MacOs
-    * Open terminal app and create the zsh shell file by doing:
-    * ```shell
-        nano ~/.zshrc 
-      ```
-    * add lines (make sure to look up which version you installed!). IMPORTANT any mistake in this file will prevent your terminal to run commands. If you notice that you cannont run commands like ls, open finder and go to your username and open the zshrc file to edit it manually. This file is hidden so you need to uses COMMAND + SHIFT + . to enable hidden files in Finder.
-        * $ export PATH=$PATH:~/.local/share/alire/toolchains/gprbuild_[VERSION]/bin
-        * $ export PATH=$PATH:~/.local/share/alire/toolchains/gnat_arm_elf_[VERSION]/bin   
-    * Close the terminal. 
-      
-* Linux
-    * Open terminal app
-    * ```shell
-        nano ~/.zshrc 
-      ```
-    * add lines
-        * $ export PATH="/home/[USERNAME]/.local/share/alire/cache/toolchains/gprbuild_[VERSION]/bin/:$PATH"
-        * $ export PATH="/home/[USERNAME]/.local/share/alire/cache/toolchains/gnat_arm_elf_[VERSION]/bin/:$PATH"       
-    * Close the environment variables window and **reboot computer**
+It reports the build tools separately from the flashing tools, because flashing
+is optional - it is not available in a browser-based Codespace.
 
 # Start
 * Make sure that you are logged in to your GitHub.com account
@@ -70,7 +45,37 @@ git submodule update --init --recursive
 ```
 
 # Open VScode
-Important to open a folder at the workspace level (root of the project or root of the example where a folder .vscode is present) either via command prompt or via open. To build your project press Ctrl+Shift+B. Decline any question of VScode trying to be helpful.
+Open **the root of the project** as your folder - and leave it open. You never
+need to close it and reopen an example folder.
+
+When VS Code asks whether you trust the authors, choose **Yes, I trust the
+authors**. Declining puts the window in Restricted Mode, which disables the Ada
+extension and the build tasks.
+
+Press `Ctrl+Shift+B` to build and flash the template.
+
+To work on one of the bundled examples, press `Ctrl+Shift+P`, choose
+**Tasks: Run Task**, and pick either:
+
+* **Choose project...** - pick any example from a list, or
+* **Build the file I'm looking at** - builds whichever example the file you are
+  currently editing belongs to.
+
+Both build and flash without changing your workspace folder. Whatever you built
+last is staged at `build/main.elf`, so pressing `F5` always debugs it.
+
+To point the Ada editor features (go-to-definition, diagnostics) at a different
+example:
+
+```shell
+python3 tools/mb.py als --use ravenscar/buttons
+```
+
+To see every project you can build:
+
+```shell
+python3 tools/mb.py list
+```
 
 # Flashing your first project to the MicroBit V2
 * The above installation should lead to a correct compile flow. However flashing the compiled firmware file to sometimes fails due to previous usage. If Ctrl+Shift+B (to build your project) results in a timeout when flashing the MicroBit, try to Erase the content of the Micro:Bit first using Ctrl+Shift+P to open the command window and type

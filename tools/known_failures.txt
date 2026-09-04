@@ -1,0 +1,30 @@
+# Projects known not to build, skipped as XFAIL by:  mb.py build --all
+#
+# A project listed here that STARTS building is reported as XPASS and fails the
+# run, so this list can only ever shrink. Delete a line the moment it is fixed.
+#
+# All 15 zfp examples are broken three ways (see Phase 6 of the plan):
+#   1. they request runtime "zfp-cortex-m4f", which no longer exists -- GNAT
+#      renamed the zfp-* runtimes to light-*, so the correct name is
+#      "light-cortex-m4f";
+#   2. 14 of them pass a linker script path with Windows backslashes, which are
+#      literal filename characters on macOS/Linux;
+#   3. the path is relative to the object directory, so it is one level short.
+#
+# Fork PR #6 ("Microbit v2 dp") already fixes 4 of them the right way, by
+# inheriting MicroBit_v2_ZFP'Runtime and MicroBit_v2_ZFP.Linker_Switches.
+zfp/BLE_beacon
+zfp/accelerometer
+zfp/analog_in
+zfp/analog_out
+zfp/buttons
+zfp/digital_in
+zfp/digital_out
+zfp/motor_drive_calibration
+zfp/motor_drive_dfr0548
+zfp/motor_drive_four_wheels
+zfp/music
+zfp/servos
+zfp/text_scrolling
+zfp/ultrasonic
+zfp/wireless_radio

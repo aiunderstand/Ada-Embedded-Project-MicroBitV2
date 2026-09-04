@@ -1,5 +1,7 @@
 {
-    "ada.projectFile": "Code/itrs.gpr",
+    // The Ada project is declared in .als.json at the repository root, not here.
+    // A VS Code "ada.projectFile" setting in ANY scope overrides .als.json, which
+    // would stop "mb.py als --use <project>" from being able to switch projects.
     "cortex-debug.armToolchainPrefix": "arm-eabi",
     "sarif-viewer.connectToGithubCodeScanning": "off"
 }

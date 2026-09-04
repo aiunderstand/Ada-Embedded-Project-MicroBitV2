@@ -1,0 +1,19 @@
+# Normalise line endings so a Windows checkout cannot break the build.
+# The Ada_Drivers_Library submodule carries its own .gitattributes; this file
+# does not reach into it.
+* text=auto
+
+*.adb text eol=lf
+*.ads text eol=lf
+*.gpr text eol=lf
+*.toml text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.rules text eol=lf
+
+*.hex text eol=lf
+*.bin binary
+*.png binary
+*.jpg binary
