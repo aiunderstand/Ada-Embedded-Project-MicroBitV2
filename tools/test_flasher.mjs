@@ -20,17 +20,28 @@ const handlers = {};
 const mkEl = (id) => ({
   id, _t: "", disabled: false, hidden: false, value: 0, files: null,
   scrollTop: 0, clientHeight: 0, scrollHeight: 0,
+  children: [], options: [], selectedIndex: -1, dataset: {}, label: "",
   classList: { add() {}, remove() {} },
   removeAttribute() { this.value = undefined; },
   set textContent(v) { this._t = String(v); },
   get textContent() { return this._t; },
+  appendChild(c) {
+    this.children.push(c);
+    // A <select> exposes every descendant <option>, including those in groups.
+    this.options.push(...(c.children?.length ? c.children : [c]));
+    return c;
+  },
   addEventListener(ev, fn) { (handlers[id] ??= {})[ev] = fn; },
 });
 const IDS = ["connect", "disconnect", "status", "file", "drop", "firmware",
-             "flash", "bar", "phase", "out", "clear", "unsupported"];
+             "flash", "bar", "phase", "out", "clear", "unsupported",
+             "gallery", "examples"];
 const els = {};
 for (const id of IDS) els[id] = mkEl(id);
-const doc = { getElementById: (id) => els[id] };
+const doc = {
+  getElementById: (id) => els[id],
+  createElement: (tag) => mkEl(`__${tag}`),
+};
 const click = (id) => handlers[id]?.click?.({});
 
 // ------------------------------------------------------- mock USB connection
@@ -61,18 +72,46 @@ const usb = {
   },
 };
 
+const GOOD_HEX = ":10000000783A0020091E0100541E0100541E010010\n:00000001FF\n";
+
+const MANIFEST = {
+  commit: "abc1234", built: "2026-09-04T20:00:00Z",
+  projects: [
+    { id: "template", family: "template", label: "template", hex: "template.hex",
+      bytes: 390000, summary: "" },
+    { id: "ravenscar/music", family: "ravenscar", label: "music",
+      hex: "ravenscar-music.hex", bytes: 450000, summary: "Music Example" },
+    { id: "spark/bounded_queue", family: "spark", label: "bounded queue",
+      hex: "spark-bounded_queue.hex", bytes: 519000, summary: "A proved queue" },
+  ],
+};
+let fetchRoutes = {
+  "./firmware/index.json": { ok: true, json: MANIFEST },
+  "./firmware/ravenscar-music.hex": { ok: true, text: GOOD_HEX },
+  "./firmware/spark-bounded_queue.hex": { ok: true, text: "not a hex at all" },
+};
+const fetchFn = async (url) => {
+  const r = fetchRoutes[url];
+  if (!r) return { ok: false, status: 404 };
+  return {
+    ok: r.ok, status: r.ok ? 200 : 404,
+    json: async () => r.json,
+    text: async () => r.text,
+  };
+};
+
 const app = createApp({
   createUSBConnection: () => usb,
   doc,
   raf: (fn) => fn(),
   usbSupported: true,
+  fetchFn,
 });
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
 const out = () => els.out.textContent;
 const mkFile = (name, text) => ({ name, size: text.length, text: async () => text });
 
-const GOOD_HEX = ":10000000783A0020091E0100541E0100541E010010\n:00000001FF\n";
 const ELF_MAGIC = "ELF binary, not hex";
 
 // ---------------------------------------------------------------- hex checks
@@ -124,6 +163,35 @@ click("connect"); await settle();
 check(usb.status === "Connected", "reconnecting to the same board must work");
 check(els.status.textContent === "connected", "status should read connected again");
 
+// ---------------------------------------------------------------- gallery
+await settle();
+check(els.gallery.hidden === false, "the example gallery should be shown when the manifest loads");
+check(els.examples.options.length === MANIFEST.projects.length,
+      "every project in the manifest should appear in the picker");
+check(els.examples.children.some((g) => g.label === "SPARK (proved)"),
+      "examples should be grouped by family");
+
+await app.useExample("ravenscar-music.hex", "ravenscar/music");
+check(app.hex !== null, "a gallery example should load as firmware");
+check(/ready-built/.test(els.firmware.textContent), "the gallery selection should be shown");
+
+// A corrupt published hex must be caught by the same validation as a local file.
+await app.useExample("spark-bounded_queue.hex", "spark/bounded_queue");
+check(app.hex === null, "an invalid gallery hex must be rejected");
+check(/could not load/.test(els.firmware.textContent), "the rejection should be shown");
+
+// A fork without the CI publishing step has no manifest: hide, do not error.
+const els3 = {};
+for (const id of IDS) els3[id] = mkEl(id);
+const app3 = createApp({
+  createUSBConnection: () => usb,
+  doc: { getElementById: (id) => els3[id], createElement: (t) => mkEl(`__${t}`) },
+  raf: (fn) => fn(), usbSupported: true,
+  fetchFn: async () => ({ ok: false, status: 404 }),
+});
+await app3.loadGallery();
+check(els3.gallery.hidden === true, "a missing manifest should hide the gallery, not error");
+
 // ------------------------------------------------------- unsupported browser
 const els2 = {};
 for (const id of IDS) els2[id] = mkEl(id);
@@ -153,4 +221,4 @@ if (failures.length) {
   for (const f of failures) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  flasher: hex validation, connect, flash, serial, reconnect, page wiring");
+console.log("PASS  flasher: hex validation, connect, flash, serial, reconnect, gallery, page wiring");

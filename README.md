@@ -164,8 +164,14 @@ No install, no toolchain, no drivers:
 **<https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>**
 
 1. Plug in the micro:bit and click **Connect**.
-2. Drop in a `.hex` and click **Flash**.
-3. `Put_Line` output appears underneath, at 115200.
+2. Pick a ready-built example, **or** drop in your own `.hex`.
+3. Click **Flash**. `Put_Line` output appears underneath, at 115200.
+
+**Try an example first.** CI builds every project in this template and publishes
+the firmware next to the page, so you can flash `music`, `accelerometer` or a
+SPARK example and see the board do something before writing a line of code.
+Those images are built from the template, not from your own code - use the file
+picker for that.
 
 Where to get the `.hex`:
 
