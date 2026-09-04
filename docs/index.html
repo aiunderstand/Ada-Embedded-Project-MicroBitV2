@@ -3,220 +3,136 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>micro:bit v2 serial console</title>
+<title>micro:bit v2 flasher</title>
 <style>
   :root {
-    --bg: #fbfbfa; --fg: #1b1b19; --muted: #6b6b66; --line: #e2e2dd;
-    --card: #ffffff; --accent: #1a6b4a; --accent-fg: #ffffff;
-    --warn-bg: #fdf6e3; --warn-line: #e8d9a8; --code-bg: #f2f2ee;
+    --bg:#fbfbfa; --fg:#1b1b19; --muted:#6b6b66; --line:#e2e2dd; --card:#fff;
+    --accent:#1a6b4a; --accent-fg:#fff; --warn-bg:#fdf6e3; --warn-line:#e8d9a8;
+    --code-bg:#f2f2ee; --drop:#f6f6f3;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #161614; --fg: #ececE6; --muted: #9a9a92; --line: #2e2e2a;
-      --card: #1e1e1b; --accent: #57b98a; --accent-fg: #10241a;
-      --warn-bg: #2a2418; --warn-line: #4a4028; --code-bg: #232320;
+      --bg:#161614; --fg:#ececE6; --muted:#9a9a92; --line:#2e2e2a; --card:#1e1e1b;
+      --accent:#57b98a; --accent-fg:#10241a; --warn-bg:#2a2418; --warn-line:#4a4028;
+      --code-bg:#232320; --drop:#1a1a17;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #161614; --fg: #ececE6; --muted: #9a9a92; --line: #2e2e2a;
-    --card: #1e1e1b; --accent: #57b98a; --accent-fg: #10241a;
-    --warn-bg: #2a2418; --warn-line: #4a4028; --code-bg: #232320;
+    --bg:#161614; --fg:#ececE6; --muted:#9a9a92; --line:#2e2e2a; --card:#1e1e1b;
+    --accent:#57b98a; --accent-fg:#10241a; --warn-bg:#2a2418; --warn-line:#4a4028;
+    --code-bg:#232320; --drop:#1a1a17;
   }
-  body { background: var(--bg); color: var(--fg);
-         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         padding: 2rem 1.25rem 4rem; }
-  main { max-width: 60rem; margin: 0 auto; }
-  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
-  .sub { color: var(--muted); margin: 0 0 1.5rem; }
-  .bar { display: flex; gap: .625rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-  button { font: inherit; padding: .5rem .95rem; border-radius: .5rem; cursor: pointer;
-           border: 1px solid var(--line); background: var(--card); color: var(--fg); }
-  button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  label { color: var(--muted); }
-  select { font: inherit; padding: .4rem .5rem; border-radius: .4rem;
-           border: 1px solid var(--line); background: var(--card); color: var(--fg); }
-  #status { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-  #out { background: var(--card); border: 1px solid var(--line); border-radius: .6rem;
-         padding: .9rem 1rem; height: 24rem; overflow: auto; white-space: pre-wrap;
-         word-break: break-word; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-         margin: 0 0 1rem; }
-  .note { background: var(--warn-bg); border: 1px solid var(--warn-line);
-          border-radius: .6rem; padding: .85rem 1rem; margin: 0 0 1rem; }
-  .note h2 { font-size: .95rem; margin: 0 0 .4rem; }
-  .note p, .note li { margin: .3rem 0; }
-  code { background: var(--code-bg); padding: .1rem .35rem; border-radius: .3rem;
-         font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  footer { color: var(--muted); font-size: .875rem; margin-top: 1.5rem;
-           border-top: 1px solid var(--line); padding-top: 1rem; }
-  a { color: var(--accent); }
+  body { background:var(--bg); color:var(--fg); padding:2rem 1.25rem 4rem;
+         font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:60rem; margin:0 auto; }
+  h1 { font-size:1.5rem; margin:0 0 .25rem; letter-spacing:-.01em; }
+  h2 { font-size:.95rem; margin:0 0 .6rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  .bar { display:flex; gap:.625rem; align-items:center; flex-wrap:wrap; margin-bottom:1.25rem; }
+  button { font:inherit; padding:.5rem .95rem; border-radius:.5rem; cursor:pointer;
+           border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  button.primary { background:var(--accent); color:var(--accent-fg); border-color:transparent; font-weight:600; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #status { margin-left:auto; color:var(--muted); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:.6rem;
+            padding:1rem 1.1rem; margin:0 0 1.25rem; }
+  #drop { border:1.5px dashed var(--line); border-radius:.5rem; background:var(--drop);
+          padding:1.1rem; text-align:center; color:var(--muted); cursor:pointer; }
+  #drop.over { border-color:var(--accent); color:var(--fg); }
+  #firmware { font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+              margin:.7rem 0; color:var(--fg); word-break:break-all; }
+  .flashrow { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
+  progress { flex:1; min-width:12rem; height:.65rem; }
+  #phase { color:var(--muted); font-size:.875rem; min-width:8rem; }
+  #out { background:var(--bg); border:1px solid var(--line); border-radius:.5rem;
+         padding:.85rem 1rem; height:20rem; overflow:auto; white-space:pre-wrap;
+         word-break:break-word; margin:0;
+         font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .note { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:.6rem;
+          padding:.85rem 1rem; margin:0 0 1.25rem; }
+  .note li, .note p { margin:.3rem 0; }
+  code { background:var(--code-bg); padding:.1rem .35rem; border-radius:.3rem;
+         font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color:var(--accent); }
+  .head { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; }
 </style>
 </head>
 <body>
 <main>
-  <h1>micro:bit v2 serial console</h1>
-  <p class="sub">Reads <code>Put_Line</code> output from your Ada program over USB — nothing to install.</p>
+  <h1>micro:bit v2 flasher</h1>
+  <p class="sub">Flash your Ada program and read its output — straight from the browser, nothing to install.</p>
 
   <div id="unsupported" class="note" hidden>
     <h2>This browser cannot talk to the micro:bit</h2>
-    <p>Web Serial works in <strong>Chrome, Edge and Opera</strong> on desktop. Safari and
-       Firefox do not implement it, and there is no polyfill.</p>
-    <p>You can still see output by flashing the board and using the serial monitor in
-       VS Code instead.</p>
+    <p>WebUSB works in <strong>Chrome, Edge and Opera</strong> on desktop. Safari and Firefox
+       do not implement it, and there is no polyfill.</p>
+    <p>You can still flash without any browser support: drag <code>main.hex</code> onto the
+       <strong>MICROBIT</strong> drive that appears when you plug the board in.</p>
   </div>
 
   <div class="bar">
     <button id="connect" class="primary">Connect</button>
     <button id="disconnect" disabled>Disconnect</button>
-    <label for="baud">Baud</label>
-    <select id="baud">
-      <option value="115200" selected>115200</option>
-      <option value="9600">9600</option>
-    </select>
-    <button id="clear">Clear</button>
     <span id="status">not connected</span>
   </div>
 
-  <pre id="out" aria-live="polite" aria-label="Serial output"></pre>
+  <section>
+    <h2>1. Choose firmware</h2>
+    <div id="drop">
+      Drop a <code>.hex</code> file here, or
+      <label style="text-decoration:underline; cursor:pointer">
+        browse<input id="file" type="file" accept=".hex,.HEX" hidden>
+      </label>
+      <div style="margin-top:.4rem; font-size:.8125rem">
+        From your repository's <strong>Actions</strong> tab, download the <strong>ITRS</strong>
+        artifact and use <code>main.hex</code> — not <code>main</code>, which is an ELF.
+        Or build locally: <code>python3 tools/mb.py build</code> writes <code>build/main.hex</code>.
+      </div>
+    </div>
+    <div id="firmware">no file chosen</div>
+
+    <h2>2. Flash</h2>
+    <div class="flashrow">
+      <button id="flash" class="primary" disabled>Flash</button>
+      <progress id="bar" max="100" value="0" hidden></progress>
+      <span id="phase"></span>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Output <span style="color:var(--muted); font-weight:400">— 115200 baud</span></h2>
+      <button id="clear">Clear</button>
+    </div>
+    <pre id="out" aria-live="polite" aria-label="Serial output"></pre>
+  </section>
 
   <div class="note">
     <h2>If Connect shows no devices</h2>
     <ul>
       <li>Use the cable that came with the board — some charge-only USB cables carry no data.</li>
-      <li><strong>Linux:</strong> add yourself to the <code>dialout</code> group
-          (<code>sudo usermod -aG dialout $USER</code>, then log out and back in).
-          Chromium installed as a <em>snap</em> cannot use Web Serial at all; install the
-          <code>.deb</code> build instead.</li>
-      <li>Close anything else holding the port — VS Code's serial monitor, or a running
-          <code>pyocd</code>.</li>
+      <li><strong>Linux:</strong> install the udev rule shipped in the repository, or the browser
+          cannot open the device:
+          <code>sudo cp tools/udev/50-microbit.rules /etc/udev/rules.d/</code> then
+          <code>sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger</code>.
+          Chromium installed as a <em>snap</em> cannot reach USB devices at all; use the
+          <code>.deb</code> build.</li>
+      <li>Close anything else holding the board — a running <code>pyocd</code>, or another tab
+          with this page open. WebUSB claims the debug interface exclusively.</li>
     </ul>
   </div>
 
-  <footer>
-    This page claims the board's CDC serial interface only, so it does
-    <strong>not</strong> conflict with <code>pyocd</code> flashing or debugging.
-  </footer>
+  <p style="color:var(--muted); font-size:.875rem; border-top:1px solid var(--line); padding-top:1rem">
+    Flashing and serial share one connection: WebUSB talks to the board's DAPLink interface chip,
+    which is separate from the nRF52833 running your program — so the connection survives a flash
+    and output resumes on its own.
+  </p>
 </main>
 
-<script>
-(() => {
-  "use strict";
-  const $ = (id) => document.getElementById(id);
-  const out = $("out"), status = $("status");
-  const btnConnect = $("connect"), btnDisconnect = $("disconnect"), btnClear = $("clear");
-
-  if (!("serial" in navigator)) {
-    $("unsupported").hidden = false;
-    btnConnect.disabled = true;
-    status.textContent = "unsupported browser";
-    return;
-  }
-
-  // Cap the buffer. A naive `textContent +=` on every chunk is O(n^2) and will
-  // lock the tab for anyone printing in a loop -- which is exactly what the
-  // examples do.
-  const MAX_CHARS = 200_000;
-  let buffer = "";
-  let pending = false;
-
-  function append(text) {
-    buffer += text;
-    if (buffer.length > MAX_CHARS) buffer = buffer.slice(-MAX_CHARS);
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      const stuck = out.scrollTop + out.clientHeight >= out.scrollHeight - 24;
-      out.textContent = buffer;
-      if (stuck) out.scrollTop = out.scrollHeight;
-    });
-  }
-
-  let port = null, reader = null, pipeDone = null, keepReading = false;
-
-  async function readLoop() {
-    const decoder = new TextDecoderStream();
-    // Hoisted deliberately: disconnect() has to await this. port.readable stays
-    // LOCKED until the pipe settles, and close() on a locked port rejects.
-    pipeDone = port.readable.pipeTo(decoder.writable).catch(() => {});
-    const r = decoder.readable.getReader();
-    reader = r;
-    try {
-      while (keepReading) {
-        const { value, done } = await r.read();
-        if (done) break;
-        if (value) append(value);
-      }
-    } catch (err) {
-      // Cancelling during a deliberate disconnect lands here; not an error.
-      if (keepReading) append(`\n[read error: ${err.message}]\n`);
-    } finally {
-      try { r.releaseLock(); } catch {}
-    }
-  }
-
-  async function openPort(p, baudRate) {
-    try {
-      await p.open({ baudRate });
-    } catch (err) {
-      // A port left open by an earlier attempt, another tab, or a reload
-      // reports InvalidStateError. Recover once instead of dead-ending.
-      if (err.name !== "InvalidStateError") throw err;
-      try { await p.close(); } catch {}
-      await p.open({ baudRate });
-    }
-  }
-
-  btnConnect.addEventListener("click", async () => {
-    try {
-      // 0x0d28 is the micro:bit's DAPLink interface chip.
-      port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0d28 }] });
-      await openPort(port, Number($("baud").value));
-      keepReading = true;
-      btnConnect.disabled = true;
-      btnDisconnect.disabled = false;
-      status.textContent = "connected";
-      append(`[connected at ${$("baud").value} baud]\n`);
-      readLoop();
-    } catch (err) {
-      // A user closing the chooser is not an error worth shouting about.
-      if (err.name === "NotFoundError") { status.textContent = "no device selected"; return; }
-      port = null;
-      status.textContent = "connection failed";
-      append(`\n[${err.name}: ${err.message}]\n`);
-    }
-  });
-
-  btnDisconnect.addEventListener("click", async () => {
-    btnDisconnect.disabled = true;
-    keepReading = false;
-
-    // Order matters. Cancel the reader, let the pipe unwind and release its
-    // lock on port.readable, and only then close. Closing while the stream is
-    // still locked rejects -- and swallowing that left the port open, so
-    // reconnecting to the same board failed with
-    // "InvalidStateError: The port is already open".
-    try { await reader?.cancel(); } catch {}
-    reader = null;
-    try { await pipeDone; } catch {}
-    pipeDone = null;
-
-    let message = "[disconnected]\n";
-    try {
-      await port?.close();
-    } catch (err) {
-      // Never claim a clean disconnect that did not happen.
-      message = `[disconnect failed: ${err.name}: ${err.message}]\n`;
-    }
-    port = null;
-
-    btnConnect.disabled = false;
-    status.textContent = "not connected";
-    append(message);
-  });
-
-  btnClear.addEventListener("click", () => { buffer = ""; out.textContent = ""; });
-})();
+<script type="module">
+  import { createUSBConnection } from "./vendor/microbit-connection-usb.mjs";
+  import { createApp } from "./app.mjs";
+  createApp({ createUSBConnection });
 </script>
 </body>
 </html>
