@@ -27,9 +27,28 @@ jobs:
       
       - name: Build
         run: 'gprbuild -j0 -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef'
-      
+
+      # DAPLink mass-storage (dragging onto the MICROBIT drive) accepts Intel HEX
+      # or a raw binary -- NOT an ELF. Without this step the uploaded artifact
+      # cannot be flashed by drag-and-drop at all.
+      - name: Convert ELF to Intel HEX
+        run: |
+          arm-eabi-objcopy -O ihex   Code/obj/main Code/obj/main.hex
+          arm-eabi-objcopy -O binary Code/obj/main Code/obj/main.bin
+
+          # Sanity-check the hex really is Intel HEX and is complete.
+          test -s Code/obj/main.hex
+          head -c 1 Code/obj/main.hex | grep -q ':'
+          tail -n 1 Code/obj/main.hex | grep -q '^:00000001FF'
+
+          echo "--- size report ---"
+          arm-eabi-size Code/obj/main
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ITRS
-          path: Code/obj/main
+          path: |
+            Code/obj/main.hex
+            Code/obj/main.bin
+            Code/obj/main

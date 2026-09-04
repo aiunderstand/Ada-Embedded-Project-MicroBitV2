@@ -79,9 +79,28 @@ Important to open a folder at the workspace level (root of the project or root o
   ```
 * Try Ctrl+Shift+B after the erase. Try removing the USB cable and using another USB port or reboot the computer if the problem persists.
 
+# Flashing without installing anything (GitHub Actions build)
+Every push is built by GitHub Actions, which publishes a ready-to-flash firmware image. This is the
+easiest route if your local toolchain is not working yet, and the only route if you are working in a
+browser-based Codespace (a Codespace has no USB access, so it can build but never flash).
+
+* Open the **Actions** tab of your repository and click the most recent successful run.
+* Download the **ITRS** artifact and unzip it. It contains:
+  * `main.hex` - Intel HEX, **this is the one you flash**
+  * `main.bin` - raw binary, an alternative to the hex
+  * `main` - the ELF, used for debugging; **this cannot be flashed by drag-and-drop**
+* Plug in the micro:bit and drag `main.hex` onto the **MICROBIT** drive. The yellow LED flashes while
+  it programs, the drive re-mounts, and your program starts.
+
+If a `FAIL.TXT` appears on the MICROBIT drive instead, open it - it says why. Dragging the `main`
+ELF rather than `main.hex` is the usual cause: the DAPLink bootloader accepts Intel HEX or a raw
+binary only.
+
 # Task automation in this template
 * DependaBot to sync with dependencies (submodules) such as the Ada Driver Library.
 * Ada Github action workflow to check if your code compiles and update the badge on top
+* The same workflow converts the build output to `main.hex` / `main.bin` and publishes them as the
+  downloadable **ITRS** artifact.
 
 # Template uses 
 * Ada language server for VS Code (https://github.com/AdaCore/ada_language_server/blob/master/README.md#vs-code-extension)
