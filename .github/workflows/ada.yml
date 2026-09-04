@@ -72,6 +72,13 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
+      # The submodule carries a bundled Unity project whose paths exceed the
+      # 260-character Windows MAX_PATH, so checkout fails outright with
+      # "Filename too long" unless long paths are enabled first.
+      - name: Enable Git long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@v4
         with:
           submodules: 'true'

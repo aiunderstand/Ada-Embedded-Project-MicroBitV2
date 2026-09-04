@@ -47,6 +47,19 @@ You can also first clone the project and then initialize the submodules afterwar
 git submodule update --init --recursive
 ```
 
+## Windows: enable long paths first
+
+The bundled Unity example has paths over 170 characters, and Windows' default
+limit is 260 including where you cloned to. Without this, `git clone` fails part
+way through with `Filename too long` and you get an incomplete checkout:
+
+```shell
+git config --global core.longpaths true
+```
+
+Run it **before** cloning. If you already cloned and saw that error, run it and
+then `git submodule update --init --recursive` again.
+
 # Open VScode
 Open **the root of the project** as your folder - and leave it open. You never
 need to close it and reopen an example folder.
