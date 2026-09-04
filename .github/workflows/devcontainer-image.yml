@@ -101,8 +101,22 @@ jobs:
             $(for d in *; do echo -n "${IMAGE}@sha256:${d} "; done)
           docker buildx imagetools inspect "${IMAGE}:${TAG}"
 
-      - name: Remind about package visibility
+      # A package pushed by GITHUB_TOKEN from a public repository is linked to
+      # that repository and inherits its visibility, so this is normally already
+      # public and needs no manual step. Verified rather than assumed:
+      - name: Check the image is anonymously pullable
         run: |
-          echo "::notice::If this is the first publish, make the package PUBLIC once at" \
-               "https://github.com/users/${{ github.repository_owner }}/packages/container/ada-microbit-toolchain/settings" \
-               "-- otherwise student Codespaces cannot pull it."
+          set -euo pipefail
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/ada-microbit-toolchain:pull&service=ghcr.io" \
+                  | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])")
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
+                 -H 'Accept: application/vnd.oci.image.index.v1+json' \
+                 "https://ghcr.io/v2/${{ github.repository_owner }}/ada-microbit-toolchain/manifests/${TAG}")
+          if [ "$code" = "200" ]; then
+            echo "::notice::Image is public and anonymously pullable."
+          else
+            echo "::error::Image is NOT anonymously pullable (HTTP $code). Make the package public at" \
+                 "https://github.com/users/${{ github.repository_owner }}/packages/container/ada-microbit-toolchain/settings" \
+                 "or student Codespaces cannot pull it."
+            exit 1
+          fi
