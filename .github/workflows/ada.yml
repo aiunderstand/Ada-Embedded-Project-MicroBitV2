@@ -6,6 +6,10 @@ name: Ada (GNAT)
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: read
+
 env:
   GNAT_VERSION: 15.1.2      # NOT 16.1.0: it fails to link (.eh_frame LMA overlaps .data)
   GPRBUILD_VERSION: 25.0.1  # 22.0.1 has no aarch64 build at all
@@ -136,32 +140,22 @@ jobs:
     name: All 43 projects build
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
     runs-on: ubuntu-24.04
+    # Runs in the prebuilt toolchain image, so there is nothing to install and a
+    # single artifact defines the toolchain here and in every Codespace.
+    #
+    # Deliberately NOT used for the student-facing "build" job, which must stay
+    # self-contained so a student's CI never depends on this registry; nor for
+    # "matrix", whose whole purpose is to prove the documented native install
+    # still works on all three operating systems.
+    container:
+      image: ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.temp }}/adl-toolchain
-            ~/.config/alire
-            ~/.cache/alire
-          key: alire-ubuntu-24.04-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
-      - name: Install Alire and the pinned toolchain
-        run: |
-          set -euo pipefail
-          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
-          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
-          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
-          alr_bin="$HOME/alr/bin"
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
-          echo "$alr_bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/alr/bin:$PATH"
-          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
-          alr settings --global --set toolchain.assistant false
-          alr --non-interactive toolchain --select \
-              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
       # A quarantined project that starts passing is reported XPASS and fails
       # this job, so tools/known_failures.txt can only ever shrink.
       - name: Build every project
@@ -175,11 +169,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: 'true'
+      # Not run in the toolchain image: gnatprove is an Alire crate dependency
+      # rather than a toolchain component, so it is resolved per workspace and
+      # the image cannot usefully carry it. Cache it instead.
       - uses: actions/cache@v4
         with:
           path: |
             ${{ runner.temp }}/adl-toolchain
             ~/.config/alire
+            ~/.local/share/alire
             ~/.cache/alire
           key: alire-prove-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
       - name: Install Alire and the pinned toolchain
@@ -187,11 +185,7 @@ jobs:
           set -euo pipefail
           curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
           unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
-          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
-          alr_bin="$HOME/alr/bin"
-          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
-          echo "$alr_bin" >> "$GITHUB_PATH"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/alr/bin:$PATH"
           alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
           alr settings --global --set toolchain.assistant false
