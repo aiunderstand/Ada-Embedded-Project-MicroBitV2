@@ -158,22 +158,36 @@ If a `FAIL.TXT` appears on the MICROBIT drive instead, open it - it says why. Dr
 ELF rather than `main.hex` is the usual cause: the DAPLink bootloader accepts Intel HEX or a raw
 binary only.
 
-# Reading Put_Line output in the browser
-`MicroBit.Console.Put_Line` writes to the USB serial port at **115200**. You can
-read it without installing anything:
+# Flash and read output from the browser
+No install, no toolchain, no drivers:
 
 **<https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>**
 
-Click *Connect* and pick the micro:bit. This is the only way to see serial output
-if you are working in a browser-based Codespace, which has no USB access of its
-own — the page runs in the browser on your own laptop, not in the container.
+1. Plug in the micro:bit and click **Connect**.
+2. Drop in a `.hex` and click **Flash**.
+3. `Put_Line` output appears underneath, at 115200.
 
-Web Serial works in Chrome, Edge and Opera on desktop; Safari and Firefox do not
-implement it. Locally you can use the VS Code serial monitor instead (it is in
-the recommended extensions).
+Where to get the `.hex`:
 
-The page claims only the board's serial interface, so it does not conflict with
-`pyocd` flashing or debugging.
+* **From CI** - your repository's **Actions** tab, most recent green run, download
+  the **ITRS** artifact and use `main.hex`. Not `main`, which is an ELF; the page
+  will tell you if you pick the wrong one.
+* **Locally** - `python3 tools/mb.py build` writes `build/main.hex`.
+
+This is the only way to flash if you are working in a browser-based Codespace,
+which has no USB access of its own: the page runs in the browser on your own
+laptop, not in the container.
+
+Flashing and serial share one connection. WebUSB talks to the board's DAPLink
+interface chip, which is separate from the nRF52833 running your program, so the
+connection survives a flash and output resumes by itself.
+
+**Browser support:** Chrome, Edge and Opera on desktop. Safari and Firefox do
+not implement WebUSB. On Linux, install the udev rule first
+(`sudo cp tools/udev/50-microbit.rules /etc/udev/rules.d/`) or the browser
+cannot open the device, and note that snap Chromium cannot reach USB at all.
+
+Close `pyocd` before connecting - WebUSB claims the debug interface exclusively.
 
 # Task automation in this template
 * DependaBot to sync with dependencies (submodules) such as the Ada Driver Library.

@@ -231,8 +231,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Node is preinstalled on the runner; the test itself has no dependencies.
-      - name: Serial console regression test
-        run: node tools/test_serial_console.mjs
+      - name: Browser flasher regression test
+        run: node tools/test_flasher.mjs
 
       - name: Tasks must stay platform agnostic
         run: |
