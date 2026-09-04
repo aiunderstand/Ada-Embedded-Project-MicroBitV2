@@ -145,6 +145,23 @@ If a `FAIL.TXT` appears on the MICROBIT drive instead, open it - it says why. Dr
 ELF rather than `main.hex` is the usual cause: the DAPLink bootloader accepts Intel HEX or a raw
 binary only.
 
+# Reading Put_Line output in the browser
+`MicroBit.Console.Put_Line` writes to the USB serial port at **115200**. You can
+read it without installing anything:
+
+**<https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>**
+
+Click *Connect* and pick the micro:bit. This is the only way to see serial output
+if you are working in a browser-based Codespace, which has no USB access of its
+own — the page runs in the browser on your own laptop, not in the container.
+
+Web Serial works in Chrome, Edge and Opera on desktop; Safari and Firefox do not
+implement it. Locally you can use the VS Code serial monitor instead (it is in
+the recommended extensions).
+
+The page claims only the board's serial interface, so it does not conflict with
+`pyocd` flashing or debugging.
+
 # Task automation in this template
 * DependaBot to sync with dependencies (submodules) such as the Ada Driver Library.
 * Ada Github action workflow to check if your code compiles and update the badge on top

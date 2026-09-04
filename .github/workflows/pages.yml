@@ -1,0 +1,40 @@
+name: Deploy serial console to Pages
+
+'on':
+  push:
+    branches: [main]
+    paths: ['docs/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only the upstream template publishes. A student who wants their own copy
+    # can enable Pages and remove this line.
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Deliberately an Actions deployment rather than a branch deployment:
+      # branch deploys run a recursive submodule init, and this repository's
+      # submodule pointer is not a branch tip -- pure waste for a static page,
+      # and a documented way for the deploy to fail.
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
