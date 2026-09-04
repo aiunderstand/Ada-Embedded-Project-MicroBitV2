@@ -23,32 +23,35 @@ jobs:
         with:
           submodules: 'true'
 
-      - name: Setup GNAT ARM toolchain
+      # Provision through Alire, exactly as a student does. Alire maps a crate
+      # version to the right release tarball itself -- the GNAT-FSF asset names
+      # do not track the crate version (crate gnat_arm_elf 15.1.2 lives in
+      # release gnat-15.1.0-2, crate gprbuild 25.0.1 in gprbuild-25.0.0-1), so
+      # hardcoding URLs here silently rots.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-build-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+
+      - name: Install Alire and the pinned toolchain
         run: |
           set -euo pipefail
-          gnat=gnat-arm-elf-linux64-x86_64-${GNAT_VERSION}-1
-          gpr=gprbuild-x86_64-linux-${GPRBUILD_VERSION}-1
-          wget -q "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-${GNAT_VERSION}-1/${gnat}.tar.gz"
-          wget -q "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gprbuild-${GPRBUILD_VERSION}-1/${gpr}.tar.gz"
-          tar xf "${gnat}.tar.gz" && tar xf "${gpr}.tar.gz"
-          echo "${PWD}/${gnat}/bin" >> "$GITHUB_PATH"
-          echo "${PWD}/${gpr}/bin"  >> "$GITHUB_PATH"
+          curl -fsSL -o alr.zip https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o alr.zip -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
 
-      - name: Build
-        run: gprbuild -j0 -p -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef
-
-      # DAPLink drag-and-drop accepts Intel HEX or a raw binary -- NOT an ELF.
-      - name: Convert ELF to Intel HEX
-        run: |
-          set -euo pipefail
-          mkdir -p build
-          cp Code/obj/main build/main.elf
-          arm-eabi-objcopy -O ihex   build/main.elf build/main.hex
-          arm-eabi-objcopy -O binary build/main.elf build/main.bin
-          test -s build/main.hex
-          head -c 1 build/main.hex | grep -q ':'
-          tail -n 1 build/main.hex | grep -q '^:00000001FF'
-          arm-eabi-size build/main.elf
+      # mb.py builds and stages build/main.elf/.hex/.bin, asserting the hex is
+      # valid Intel HEX. DAPLink drag-and-drop takes hex or raw binary, not ELF.
+      - name: Build and package firmware
+        run: python3 tools/mb.py build
 
       - uses: actions/upload-artifact@v4
         with:
