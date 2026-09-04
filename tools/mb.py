@@ -306,18 +306,51 @@ def cmd_erase(args) -> int:
     return alr_exec(["pyocd", "erase", "--mass", "-t", TARGET])
 
 
+def proof_gpr(gpr: Path) -> Path:
+    """The project GNATprove should analyse.
+
+    GNATprove analyses every unit it can see, and the Ada Drivers Library is not
+    SPARK, so proving a program that withs the ADL fails on the ADL's own code
+    rather than on the student's. Each spark/ example therefore ships a
+    proof.gpr covering only its hardware-free core; use it when present.
+    """
+    candidate = gpr.parent / "proof.gpr"
+    return candidate if candidate.is_file() else gpr
+
+
+def prove_one(pid: str, gpr: Path, args) -> bool:
+    target = proof_gpr(gpr)
+    if target == gpr and not (gpr.parent / "src" / "core").is_dir():
+        info(f"note: {pid} has no proof.gpr; proving the whole project")
+    info(f"proving {pid} ({rel(target)})")
+    # Without --checks-as-errors, gnatprove reports an unproved check and still
+    # exits 0 -- a proof gate that cannot fail is not a gate.
+    cmd = ["gnatprove", "-P", rel(target), "-j0", "--report=all",
+           "--checks-as-errors=on", f"--mode={args.mode}"]
+    if args.level is not None:
+        cmd.append(f"--level={args.level}")
+    return alr_exec(cmd) == 0
+
+
 def cmd_prove(args) -> int:
+    if args.all_spark:
+        projects = {k: v for k, v in discover().items() if k.startswith("spark/")}
+        if not projects:
+            die("no spark/ examples found")
+        failed = [pid for pid in sorted(projects)
+                  if not prove_one(pid, projects[pid], args)]
+        print(f"\n{len(projects) - len(failed)}/{len(projects)} spark example(s) proved")
+        if failed:
+            print("unproved: " + ", ".join(failed))
+        return 1 if failed else 0
+
     if args.use:
         pid, gpr = resolve_id(args.use)
     elif args.use_dir:
         pid, gpr = resolve_dir(Path(args.use_dir))
     else:
         pid, gpr = "template", TEMPLATE_GPR
-    info(f"proving {pid} ({rel(gpr)})")
-    cmd = ["gnatprove", "-P", rel(gpr), "-j0", "--report=all", f"--mode={args.mode}"]
-    if args.level is not None:
-        cmd.append(f"--level={args.level}")
-    return alr_exec(cmd)
+    return 0 if prove_one(pid, gpr, args) else 1
 
 
 # --------------------------------------------------------------------------
@@ -427,6 +460,8 @@ def main() -> int:
 
     p = sub.add_parser("prove", help="run gnatprove (SPARK)")
     target_flags(p)
+    p.add_argument("--all-spark", action="store_true",
+                   help="prove every spark/ example")
     p.add_argument("--mode", default="flow", choices=["check", "flow", "prove", "all"])
     p.add_argument("--level", type=int, choices=[0, 1, 2, 3, 4])
     p.set_defaults(func=cmd_prove)

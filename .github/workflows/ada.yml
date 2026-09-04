@@ -145,6 +145,38 @@ jobs:
       - name: Build every project
         run: python3 tools/mb.py build --all
 
+  prove:
+    name: SPARK examples prove clean
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-prove-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o alr.zip https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o alr.zip -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+      # mb.py passes --checks-as-errors=on, because gnatprove otherwise reports
+      # an unproved check and still exits 0 -- a proof gate that cannot fail is
+      # not a gate.
+      - name: Prove every spark/ example
+        run: python3 tools/mb.py prove --all-spark --mode=prove --level=1
+
   renamed:
     name: Works when the template is renamed
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'

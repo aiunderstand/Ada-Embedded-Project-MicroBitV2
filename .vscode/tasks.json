@@ -144,7 +144,8 @@
                 "zfp/servos",
                 "zfp/text_scrolling",
                 "zfp/ultrasonic",
-                "zfp/wireless_radio"
+                "zfp/wireless_radio",
+                "spark/bounded_queue"
             ]
         }
     ]

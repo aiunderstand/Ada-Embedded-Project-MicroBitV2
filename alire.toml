@@ -11,6 +11,7 @@ auto-gpr-with = false
 
 [[depends-on]]
 gnat_arm_elf = "=15.1.2"
+gnatprove    = "=15.1.0"
 
 [configuration]
 disabled = true
