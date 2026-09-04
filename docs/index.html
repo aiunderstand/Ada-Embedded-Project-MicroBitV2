@@ -132,23 +132,38 @@
     });
   }
 
-  let port = null, reader = null, keepReading = false;
+  let port = null, reader = null, pipeDone = null, keepReading = false;
 
   async function readLoop() {
     const decoder = new TextDecoderStream();
-    const closed = port.readable.pipeTo(decoder.writable).catch(() => {});
-    reader = decoder.readable.getReader();
+    // Hoisted deliberately: disconnect() has to await this. port.readable stays
+    // LOCKED until the pipe settles, and close() on a locked port rejects.
+    pipeDone = port.readable.pipeTo(decoder.writable).catch(() => {});
+    const r = decoder.readable.getReader();
+    reader = r;
     try {
       while (keepReading) {
-        const { value, done } = await reader.read();
+        const { value, done } = await r.read();
         if (done) break;
         if (value) append(value);
       }
     } catch (err) {
-      append(`\n[read error: ${err.message}]\n`);
+      // Cancelling during a deliberate disconnect lands here; not an error.
+      if (keepReading) append(`\n[read error: ${err.message}]\n`);
     } finally {
-      try { reader.releaseLock(); } catch {}
-      await closed;
+      try { r.releaseLock(); } catch {}
+    }
+  }
+
+  async function openPort(p, baudRate) {
+    try {
+      await p.open({ baudRate });
+    } catch (err) {
+      // A port left open by an earlier attempt, another tab, or a reload
+      // reports InvalidStateError. Recover once instead of dead-ending.
+      if (err.name !== "InvalidStateError") throw err;
+      try { await p.close(); } catch {}
+      await p.open({ baudRate });
     }
   }
 
@@ -156,7 +171,7 @@
     try {
       // 0x0d28 is the micro:bit's DAPLink interface chip.
       port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0d28 }] });
-      await port.open({ baudRate: Number($("baud").value) });
+      await openPort(port, Number($("baud").value));
       keepReading = true;
       btnConnect.disabled = true;
       btnDisconnect.disabled = false;
@@ -166,20 +181,38 @@
     } catch (err) {
       // A user closing the chooser is not an error worth shouting about.
       if (err.name === "NotFoundError") { status.textContent = "no device selected"; return; }
+      port = null;
       status.textContent = "connection failed";
       append(`\n[${err.name}: ${err.message}]\n`);
     }
   });
 
   btnDisconnect.addEventListener("click", async () => {
-    keepReading = false;
-    try { await reader?.cancel(); } catch {}
-    try { await port?.close(); } catch {}
-    port = null;
-    btnConnect.disabled = false;
     btnDisconnect.disabled = true;
+    keepReading = false;
+
+    // Order matters. Cancel the reader, let the pipe unwind and release its
+    // lock on port.readable, and only then close. Closing while the stream is
+    // still locked rejects -- and swallowing that left the port open, so
+    // reconnecting to the same board failed with
+    // "InvalidStateError: The port is already open".
+    try { await reader?.cancel(); } catch {}
+    reader = null;
+    try { await pipeDone; } catch {}
+    pipeDone = null;
+
+    let message = "[disconnected]\n";
+    try {
+      await port?.close();
+    } catch (err) {
+      // Never claim a clean disconnect that did not happen.
+      message = `[disconnect failed: ${err.name}: ${err.message}]\n`;
+    }
+    port = null;
+
+    btnConnect.disabled = false;
     status.textContent = "not connected";
-    append("[disconnected]\n");
+    append(message);
   });
 
   btnClear.addEventListener("click", () => { buffer = ""; out.textContent = ""; });
