@@ -25,15 +25,6 @@ You do **not** need to install a compiler. Alire does that in step 3.
 
 ## 2. Get the code
 
-> **Windows, do this first.** The drivers library contains a bundled Unity
-> project with very long paths, and Windows refuses them by default. Without
-> this, the clone fails half way through with `Filename too long` and you get a
-> broken checkout that looks like a corrupt download:
->
-> ```shell
-> git config --global core.longpaths true
-> ```
-
 Clone **your** repository — the one you made with *Use this template* — with its
 submodules:
 
@@ -42,53 +33,56 @@ git clone --recurse-submodules https://github.com/YOUR_NAME/YOUR_REPO.git
 cd YOUR_REPO
 ```
 
-If you already cloned without `--recurse-submodules`, fix it with:
-
-```shell
-git submodule update --init --recursive
-```
-
-> Do **not** download the repository as a ZIP. GitHub's ZIP does not include
+> Do **not** download the repository as a ZIP. GitHub's ZIP does not contain
 > submodules, so the drivers would be missing and nothing would build.
 
-## 3. Install the toolchain
+> **Windows:** if the clone fails part way through with `Filename too long`,
+> run `git config --global core.longpaths true`, delete the folder and clone
+> again. The drivers library contains a bundled Unity project with paths longer
+> than Windows allows by default. (The setup command below sets this for you,
+> but the clone happens first.)
 
-Alire downloads and manages the Ada compiler for you.
-
-> **Windows only**, so `alr` does not stop to install MSYS2, which this project
-> does not need:
->
-> ```shell
-> alr settings --global --set msys2.do_not_install true
-> ```
-
-Then, on every platform, from inside the repository:
+## 3. Run the setup command
 
 ```shell
-alr toolchain --select gnat_arm_elf=15.1.2 gprbuild=25.0.1
+python3 tools/mb.py setup
 ```
 
-This downloads about 550 MB and unpacks to about 2 GB. Go and make a coffee.
+On Windows, use `python` instead of `python3`.
 
-**That is the whole installation.** You do not edit `PATH`, and you do not
-reboot — every build in this template runs through Alire, which sets the
-environment itself.
+That is the whole installation. It:
 
-Check it:
+* installs **Alire** if you do not have it, verifying the download against a
+  pinned checksum;
+* installs the pinned compiler (`gnat_arm_elf` 15.1.2) and `gprbuild` 25.0.1 —
+  about 550 MB, unpacking to roughly 2 GB, so it takes a few minutes;
+* fetches the drivers submodule if it is missing;
+* sets the two Windows settings this project needs;
+* installs `pyocd` so you can flash and debug over USB (skip with `--no-pyocd`);
+* finishes by checking everything.
 
-```shell
-python3 tools/mb.py doctor
+**You do not edit `PATH`, and you do not reboot.** Every build runs through
+Alire, which sets the environment itself.
+
+It is safe to run again — it skips whatever is already done, so it doubles as a
+repair command.
+
+You should see:
+
 ```
-
-```
-Build tools (required):
   OK       alr: alr 2.1.1
   OK       gprbuild: GPRBUILD 25.0.1
   OK       arm-eabi-gcc: 15.1.0
   OK       arm-eabi-objcopy: GNU objcopy (GNU Binutils) 2.44
+
+Build environment looks good.
 ```
 
-On Windows, use `python` instead of `python3` if `python3` is not found.
+> **Windows on ARM does not work.** Alire publishes no ARM64 Windows build, and
+> the x86-64 one crashes under Windows' emulation (verified on Windows 11
+> ARM64). Use the [browser path](codespace.md) instead — it needs nothing
+> installed — or an x86-64 Windows machine, a Mac, or Linux. The setup command
+> detects this and tells you rather than failing strangely.
 
 ## 4. Open the project
 

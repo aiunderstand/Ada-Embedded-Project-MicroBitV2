@@ -599,12 +599,20 @@ def _version_line(out: str) -> str:
     ("Note: Synchronizing workspace..."), which would otherwise be reported as
     the tool's version in doctor output.
     """
+    # Alire prints its own progress and dependency-solving output before running
+    # the command, and some of it contains digits ("+b gnat_arm_elf 15.1.2
+    # (new,binary)"), so a digit test alone is not enough. -q would suppress the
+    # command's own output too, so filter explicitly.
+    noise_prefix = ("Note:", "Warning:", "Info:", "ERROR:", "+", "-", "#")
+    noise_substr = ("Synchronizing", "Dependencies automatically",
+                    "(new,binary)", "Nothing to update", "Deploying",
+                    "installed successfully", "set as default")
     for line in out.splitlines():
         line = line.strip()
-        if not line or line.startswith(("Note:", "Warning:", "Info:", "ERROR:")):
+        if not line or line.startswith(noise_prefix):
             continue
-        # Alire also emits plain status lines like "Nothing to update."; a real
-        # version string always carries a digit.
+        if any(n in line for n in noise_substr):
+            continue
         if not any(c.isdigit() for c in line):
             continue
         return line
@@ -622,8 +630,18 @@ def _alr_asset() -> tuple[str, str]:
         osname = "macos"
     elif os.name == "nt":
         osname = "windows"
-        # Alire publishes no ARM64 Windows build. Windows on ARM runs the x64
-        # one under emulation, which may or may not work on a given machine.
+        # Alire publishes no ARM64 Windows build. The x64 one under Windows'
+        # emulation crashes immediately (0xC0000005, access violation), verified
+        # on Windows 11 ARM64, so there is nothing useful to fall back to.
+        native = (os.environ.get("PROCESSOR_ARCHITEW6432")
+                  or os.environ.get("PROCESSOR_ARCHITECTURE", "")).upper()
+        if "ARM" in native or m in ("arm64", "aarch64"):
+            die("Windows on ARM is not supported.\n"
+                "  Alire publishes no ARM64 Windows build, and the x64 build crashes\n"
+                "  under Windows' x64 emulation.\n\n"
+                "  Use the browser path instead - it needs nothing installed:\n"
+                "    setup/codespace.md\n"
+                "  Or use an x86-64 Windows machine, macOS, or Linux.")
         arch = "x86_64"
     else:
         die(f"unsupported platform: {sys.platform}")
