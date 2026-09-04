@@ -26,7 +26,12 @@ apt-get install -y --no-install-recommends \
 log "Installing pyocd"
 # pyocd < 0.44 pins capstone<5.0, which has no aarch64 and no cp312 wheels,
 # so it cannot install on arm64 or on modern Python.
-pip install --no-cache-dir --upgrade "pyocd>=0.44"
+#
+# The devcontainer python feature provides a pip that is not "externally
+# managed", but a plain distro python (Ubuntu 24.04+) refuses to install into
+# the system environment under PEP 668, so fall back explicitly.
+pip install --no-cache-dir --upgrade "pyocd>=0.44" \
+  || pip install --no-cache-dir --upgrade --break-system-packages "pyocd>=0.44"
 
 log "Installing Alire ${ALR_VERSION}"
 case "$(uname -m)" in

@@ -1,4 +1,7 @@
-![Your project compiles badge](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2/actions/workflows/ada.yml/badge.svg)
+<!-- No build badge here on purpose: a template is copied verbatim, so a badge
+     pointing at the upstream repository would report the lecturer's build
+     status inside every student's project. Check your own build under the
+     Actions tab of your repository. -->
 
 # Ada-Embedded-Project-MicroBitV2
 Template for USN BSc intelligent real-time systems course.

@@ -1,54 +1,182 @@
 name: Ada (GNAT)
+
 'on':
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+env:
+  GNAT_VERSION: 15.1.2      # NOT 16.1.0: it fails to link (.eh_frame LMA overlaps .data)
+  GPRBUILD_VERSION: 25.0.1  # 22.0.1 has no aarch64 build at all
+  UPSTREAM: aiunderstand/Ada-Embedded-Project-MicroBitV2
+
 jobs:
+  # The only job that runs in a student's copy of this template. Deliberately
+  # self-contained and single-platform: a student repo should never burn Actions
+  # minutes on a macOS runner (billed 10x) for a failure unrelated to their code.
   build:
+    name: Build and package firmware
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
 
-      - name: Setup GNAT ARM Toolchain
+      - name: Setup GNAT ARM toolchain
         run: |
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-14.2.0-1/gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          tar xf gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          echo "${PWD}/gnat-arm-elf-linux64-x86_64-14.2.0-1/bin" >> $GITHUB_PATH        
+          set -euo pipefail
+          gnat=gnat-arm-elf-linux64-x86_64-${GNAT_VERSION}-1
+          gpr=gprbuild-x86_64-linux-${GPRBUILD_VERSION}-1
+          wget -q "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-${GNAT_VERSION}-1/${gnat}.tar.gz"
+          wget -q "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gprbuild-${GPRBUILD_VERSION}-1/${gpr}.tar.gz"
+          tar xf "${gnat}.tar.gz" && tar xf "${gpr}.tar.gz"
+          echo "${PWD}/${gnat}/bin" >> "$GITHUB_PATH"
+          echo "${PWD}/${gpr}/bin"  >> "$GITHUB_PATH"
 
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gprbuild-22.0.0-1/gprbuild-x86_64-linux-22.0.0-1.tar.gz
-          tar xf gprbuild-x86_64-linux-22.0.0-1.tar.gz
-          echo "${PWD}/gprbuild-x86_64-linux-22.0.0-1/bin" >> $GITHUB_PATH
-      
       - name: Build
-        run: 'gprbuild -j0 -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef'
+        run: gprbuild -j0 -p -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef
 
-      # DAPLink mass-storage (dragging onto the MICROBIT drive) accepts Intel HEX
-      # or a raw binary -- NOT an ELF. Without this step the uploaded artifact
-      # cannot be flashed by drag-and-drop at all.
+      # DAPLink drag-and-drop accepts Intel HEX or a raw binary -- NOT an ELF.
       - name: Convert ELF to Intel HEX
         run: |
-          arm-eabi-objcopy -O ihex   Code/obj/main Code/obj/main.hex
-          arm-eabi-objcopy -O binary Code/obj/main Code/obj/main.bin
+          set -euo pipefail
+          mkdir -p build
+          cp Code/obj/main build/main.elf
+          arm-eabi-objcopy -O ihex   build/main.elf build/main.hex
+          arm-eabi-objcopy -O binary build/main.elf build/main.bin
+          test -s build/main.hex
+          head -c 1 build/main.hex | grep -q ':'
+          tail -n 1 build/main.hex | grep -q '^:00000001FF'
+          arm-eabi-size build/main.elf
 
-          # Sanity-check the hex really is Intel HEX and is complete.
-          test -s Code/obj/main.hex
-          head -c 1 Code/obj/main.hex | grep -q ':'
-          tail -n 1 Code/obj/main.hex | grep -q '^:00000001FF'
-
-          echo "--- size report ---"
-          arm-eabi-size Code/obj/main
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ITRS
           path: |
-            Code/obj/main.hex
-            Code/obj/main.bin
-            Code/obj/main
+            build/main.hex
+            build/main.bin
+            build/main.elf
+
+  # ---- everything below runs only in the upstream template repository ----
+
+  matrix:
+    name: Build on ${{ matrix.os }}
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - uses: actions/cache@v4
+        with:
+          # ~/.config/alire holds the index clone and the toolchain selection;
+          # without it every run re-clones the index even on a cache hit.
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-${{ matrix.os }}-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+
+      - name: Install Alire and the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ runner.os }}" in
+            Linux)   asset=alr-2.1.1-bin-x86_64-linux.zip ;;
+            macOS)   asset=alr-2.1.1-bin-aarch64-macos.zip ;;
+            Windows) asset=alr-2.1.1-bin-x86_64-windows.zip ;;
+          esac
+          curl -fsSL -o alr.zip "https://github.com/alire-project/alire/releases/download/v2.1.1/${asset}"
+          unzip -q -o alr.zip -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          # Setting toolchain.dir removes every per-OS path assumption.
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          # Without this, alr offers to install msys2 on Windows and blocks.
+          alr settings --global --set msys2.do_not_install true
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+
+      - name: Build the template
+        shell: bash
+        run: python3 tools/mb.py build
+
+      - name: Working tree must be clean
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain -uall)" || { git status --porcelain -uall; exit 1; }
+          test -z "$(git -C Code/libs/Ada_Drivers_Library status --porcelain -uall)"
+
+  examples:
+    name: All 43 projects build
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-ubuntu-24.04-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o alr.zip https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o alr.zip -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+      # A quarantined project that starts passing is reported XPASS and fails
+      # this job, so tools/known_failures.txt can only ever shrink.
+      - name: Build every project
+        run: python3 tools/mb.py build --all
+
+  renamed:
+    name: Works when the template is renamed
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      # A student names their repository whatever they like. This is the bug
+      # class that made the devcontainer fail for everyone.
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+          path: My-Student-Project-2026
+      - name: No path may hardcode this repository's name
+        working-directory: My-Student-Project-2026
+        run: |
+          set -euo pipefail
+          if grep -rn 'Ada-Embedded-Project-MicroBitV2' .devcontainer .vscode tools; then
+            echo "::error::a repository-specific path is baked into the template"
+            exit 1
+          fi
+          echo "no hardcoded repository name"
+
+  lint:
+    name: Template hygiene
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tasks must stay platform agnostic
+        run: |
+          set -euo pipefail
+          fail=0
+          grep -rn 'zshrc' .vscode && { echo "::error::.vscode depends on a shell rc file"; fail=1; }
+          grep -rn '"\$ada"' .vscode && { echo "::error::\$ada is not a real problem matcher"; fail=1; }
+          grep -rn '"type": *"shell"' .vscode && { echo "::error::use type:process, not type:shell"; fail=1; }
+          exit $fail

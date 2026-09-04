@@ -113,6 +113,9 @@
                 "ravenscar/digital_out",
                 "ravenscar/magnetometer",
                 "ravenscar/math_functions",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wired",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WiredRadioReceiver",
+                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WirelessRadioController",
                 "ravenscar/motor_drive_dfr0548",
                 "ravenscar/motor_drive_four_wheels",
                 "ravenscar/music",
@@ -127,9 +130,21 @@
                 "ravenscar/wireless_radio",
                 "ravenscar/wireless_radio_car_example/Car",
                 "ravenscar/wireless_radio_car_example/Controller",
-                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wired",
-                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WiredRadioReceiver",
-                "ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WirelessRadioController"
+                "zfp/BLE_beacon",
+                "zfp/accelerometer",
+                "zfp/analog_in",
+                "zfp/analog_out",
+                "zfp/buttons",
+                "zfp/digital_in",
+                "zfp/digital_out",
+                "zfp/motor_drive_calibration",
+                "zfp/motor_drive_dfr0548",
+                "zfp/motor_drive_four_wheels",
+                "zfp/music",
+                "zfp/servos",
+                "zfp/text_scrolling",
+                "zfp/ultrasonic",
+                "zfp/wireless_radio"
             ]
         }
     ]
