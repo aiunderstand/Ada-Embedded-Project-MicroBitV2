@@ -357,6 +357,74 @@ def cmd_prove(args) -> int:
 # housekeeping
 # --------------------------------------------------------------------------
 
+def _summary(gpr: Path) -> str:
+    """First prose line of an example's README, used as the gallery caption."""
+    readme = gpr.parent / "README.md"
+    if not readme.is_file():
+        return ""
+    for line in readme.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if line and not line.startswith(("#", "|", "-", "*", "`", ">")):
+            # Plain prose for a dropdown: drop the markdown emphasis and code ticks.
+            line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+            line = re.sub(r"`([^`]+)`", r"\1", line)
+            return line.rstrip(":.").strip()
+    return ""
+
+
+def cmd_gallery(args) -> int:
+    """Build every project and emit .hex files plus a manifest.
+
+    Used by the Pages workflow so the browser flasher can offer ready-built
+    firmware. The output is deployed as a Pages artifact and never committed,
+    so this costs nothing in the repository.
+    """
+    import json
+
+    out = Path(args.out)
+    if not out.is_absolute():
+        out = REPO / out
+    out.mkdir(parents=True, exist_ok=True)
+
+    projects = discover()
+    entries, failed = [], []
+    for pid in sorted(projects):
+        gpr = projects[pid]
+        if not build_one(pid, gpr, quiet=True):
+            print(f"  FAIL  {pid}")
+            failed.append(pid)
+            continue
+        exe = built_exe(gpr)
+        name = pid.replace("/", "-") + ".hex"
+        hexf = out / name
+        if alr_exec([OBJCOPY, "-O", "ihex", rel(exe), rel(hexf)], quiet=True) != 0:
+            print(f"  FAIL  {pid} (objcopy)")
+            failed.append(pid)
+            continue
+        entries.append({
+            "id": pid,
+            "family": pid.split("/")[0] if "/" in pid else "template",
+            "label": pid.split("/")[-1].replace("_", " "),
+            "hex": name,
+            "bytes": hexf.stat().st_size,
+            "summary": _summary(gpr),
+        })
+        print(f"  ok    {pid}  ({hexf.stat().st_size // 1024} KB)")
+
+    manifest = {
+        # Stamped by the caller so this stays deterministic and resumable.
+        "commit": args.commit or "",
+        "built": args.built or "",
+        "projects": entries,
+    }
+    (out / "index.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    total = sum(e["bytes"] for e in entries)
+    print(f"\n{len(entries)} firmware image(s), {total // 1024} KB, manifest at {rel(out / 'index.json')}")
+    if failed:
+        print("failed: " + ", ".join(failed))
+    return 1 if failed else 0
+
+
 def cmd_list(args) -> int:
     projects = discover()
     quarantined = load_known_failures()
@@ -468,6 +536,13 @@ def main() -> int:
 
     p = sub.add_parser("list", help="list buildable projects")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("gallery",
+                       help="build every project and emit .hex files + a manifest")
+    p.add_argument("--out", default="site/firmware", help="output directory")
+    p.add_argument("--commit", default="", help="commit sha to record in the manifest")
+    p.add_argument("--built", default="", help="ISO timestamp to record in the manifest")
+    p.set_defaults(func=cmd_gallery)
 
     p = sub.add_parser("clean", help="remove the build tree")
     p.set_defaults(func=cmd_clean)

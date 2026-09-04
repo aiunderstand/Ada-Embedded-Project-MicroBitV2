@@ -78,6 +78,22 @@
 
   <section>
     <h2>1. Choose firmware</h2>
+
+    <div id="gallery" hidden style="margin-bottom:.9rem">
+      <label for="examples" style="display:block; color:var(--muted); margin-bottom:.35rem">
+        Try a ready-built example - flash something that works before writing any code:
+      </label>
+      <select id="examples" style="width:100%; font:inherit; padding:.5rem;
+              border-radius:.45rem; border:1px solid var(--line);
+              background:var(--card); color:var(--fg)">
+        <option value="">Choose an example...</option>
+      </select>
+      <div style="margin-top:.4rem; font-size:.8125rem; color:var(--muted)">
+        Built by CI from the template repository, so these are not your own code -
+        use the file below for that.
+      </div>
+    </div>
+
     <div id="drop">
       Drop a <code>.hex</code> file here, or
       <label style="text-decoration:underline; cursor:pointer">

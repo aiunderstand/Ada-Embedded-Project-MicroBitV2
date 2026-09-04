@@ -39,6 +39,7 @@ export function createApp({
   doc = globalThis.document,
   raf = globalThis.requestAnimationFrame,
   usbSupported = typeof globalThis.navigator !== "undefined" && !!globalThis.navigator.usb,
+  fetchFn = globalThis.fetch?.bind(globalThis),
 }) {
   const $ = (id) => doc.getElementById(id);
   const els = {
@@ -46,6 +47,7 @@ export function createApp({
     file: $("file"), drop: $("drop"), firmware: $("firmware"),
     flash: $("flash"), bar: $("bar"), phase: $("phase"),
     out: $("out"), clear: $("clear"), unsupported: $("unsupported"),
+    gallery: $("gallery"), examples: $("examples"),
   };
 
   // ---- serial output, buffered ------------------------------------------
@@ -131,6 +133,72 @@ export function createApp({
     els.drop.addEventListener("drop", (e) => useFile(e.dataTransfer?.files?.[0]));
   }
 
+  // ---- ready-built examples ---------------------------------------------
+  // CI builds every project and publishes the hex files next to this page, so a
+  // student can flash something that works before writing any code. The
+  // manifest is absent when the site is served without that step (a fork with
+  // Pages off, or local preview), in which case the section simply stays hidden.
+  async function loadGallery() {
+    if (!els.gallery || !els.examples || !fetchFn) return;
+    let manifest;
+    try {
+      const res = await fetchFn("./firmware/index.json", { cache: "no-cache" });
+      if (!res.ok) throw new Error(String(res.status));
+      manifest = await res.json();
+    } catch {
+      els.gallery.hidden = true;
+      return;
+    }
+    const families = [
+      ["template", "Template"],
+      ["spark", "SPARK (proved)"],
+      ["ravenscar", "Ravenscar"],
+      ["zfp", "Light / ZFP"],
+    ];
+    for (const [family, label] of families) {
+      const inFamily = (manifest.projects ?? []).filter((p) => p.family === family);
+      if (inFamily.length === 0) continue;
+      const group = doc.createElement("optgroup");
+      group.label = label;
+      for (const proj of inFamily) {
+        const opt = doc.createElement("option");
+        opt.value = proj.hex;
+        opt.dataset.id = proj.id;
+        opt.textContent = proj.summary ? `${proj.label} - ${proj.summary}` : proj.label;
+        group.appendChild(opt);
+      }
+      els.examples.appendChild(group);
+    }
+    els.gallery.hidden = false;
+  }
+
+  async function useExample(hexName, id) {
+    if (!hexName || !fetchFn) return;
+    try {
+      const res = await fetchFn(`./firmware/${hexName}`, { cache: "no-cache" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const problem = validateHex(text);
+      if (problem) throw new Error(problem);
+      hex = { name: `${id} (ready-built)`, text };
+      els.firmware.textContent = `${id} - ${Math.round(text.length / 1024)} KB, ready-built`;
+      note(`loaded ${id}`);
+    } catch (err) {
+      hex = null;
+      els.firmware.textContent = `could not load ${id}: ${err.message}`;
+      note(`could not load ${id}: ${err.message}`);
+    }
+    refresh();
+  }
+
+  if (els.examples) {
+    els.examples.addEventListener("change", (e) => {
+      const sel = e.target;
+      const opt = sel.options?.[sel.selectedIndex];
+      if (opt?.value) useExample(opt.value, opt.dataset?.id ?? opt.value);
+    });
+  }
+
   // ---- actions -----------------------------------------------------------
   els.connect.addEventListener("click", async () => {
     setStatus("connecting...");
@@ -186,5 +254,7 @@ export function createApp({
   els.clear.addEventListener("click", () => { buffer = ""; els.out.textContent = ""; });
 
   refresh();
-  return { usb, append, validateHex, useFile, get hex() { return hex; } };
+  loadGallery();
+  return { usb, append, validateHex, useFile, useExample, loadGallery,
+           get hex() { return hex; } };
 }

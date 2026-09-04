@@ -1,9 +1,8 @@
-name: Deploy serial console to Pages
+name: Deploy flasher to Pages
 
 'on':
   push:
     branches: [main]
-    paths: ['docs/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -15,26 +14,63 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  GNAT_VERSION: 15.1.2
+  GPRBUILD_VERSION: 25.0.1
+
 jobs:
   deploy:
-    # Only the upstream template publishes. A student who wants their own copy
-    # can enable Pages and remove this line.
+    # Only the upstream template publishes. A fork that wants its own copy can
+    # enable Pages and delete this line.
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # Deliberately an Actions deployment rather than a branch deployment:
-      # branch deploys run a recursive submodule init, and this repository's
-      # submodule pointer is not a branch tip -- pure waste for a static page,
-      # and a documented way for the deploy to fail.
+      # Deliberately an Actions deployment rather than a branch deploy: branch
+      # deploys run a recursive submodule init, and this repository's submodule
+      # pointer is not a branch tip. It also means the firmware built below is
+      # never committed -- the site is assembled here and thrown away, so the
+      # ~16 MB of hex files costs nothing in the repository.
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: 'true'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-pages-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+
+      - name: Assemble the site
+        run: |
+          set -euo pipefail
+          cp -r docs site
+          # Builds every project and writes site/firmware/*.hex + index.json.
+          python3 tools/mb.py gallery \
+            --out site/firmware \
+            --commit "${GITHUB_SHA}" \
+            --built "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          du -sh site site/firmware
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
