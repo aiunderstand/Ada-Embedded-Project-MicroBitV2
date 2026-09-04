@@ -42,6 +42,26 @@ KNOWN_FAILURES = REPO / "tools" / "known_failures.txt"
 ALS_JSON = REPO / ".als.json"
 
 TARGET = "nrf52833"
+
+# Pinned toolchain. Keep in step with alire.toml, .devcontainer/Dockerfile and
+# .github/workflows/ada.yml.
+ALR_VERSION = "2.1.1"
+GNAT_VERSION = "15.1.2"
+GPRBUILD_VERSION = "25.0.1"
+
+# Alire publishes no checksums, so these were computed once and pinned here: a
+# tampered or truncated download fails loudly instead of being installed.
+ALR_SHA256 = {
+    "x86_64-linux":   "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7",
+    "aarch64-linux":  "d76c93ad3dc631826144e10bdabc6b3bf98783805bebfd5e4a0e852dd524d812",
+    "x86_64-macos":   "d3e16cdfaf0cfb2da62853b79b62910189fdca9d5fddc5c3ac5974ffc7d9544b",
+    "aarch64-macos":  "2c4867bfff3b95ecd9d846df460a52983d2b0072808b341f8fa5d82494fb309e",
+    "x86_64-windows": "863013b1f94da6f3b7d0d5a74022ac3370424eeea9a470ebdb33d188d61b9125",
+}
+
+# Where "mb.py setup" puts alr when it is not already installed. Deliberately not
+# on PATH: nothing here should require the student to edit their environment.
+MANAGED_ALR_DIR = Path.home() / ".local" / "share" / "ada-microbit" / "alr"
 OBJCOPY = "arm-eabi-objcopy"
 SIZE = "arm-eabi-size"
 
@@ -131,9 +151,27 @@ def resolve_id(pid: str) -> tuple[str, Path]:
 # running things through Alire
 # --------------------------------------------------------------------------
 
+def alr_path() -> str:
+    """Where alr is, preferring one already on PATH.
+
+    Falls back to the copy "mb.py setup" installs, so a student never has to
+    edit PATH for this project to work.
+    """
+    found = shutil.which("alr")
+    if found:
+        return found
+    for name in ("alr", "alr.exe"):
+        managed = MANAGED_ALR_DIR / "bin" / name
+        if managed.is_file():
+            return str(managed)
+    return "alr"
+
+
 def run(cmd: list[str], quiet: bool = False) -> int:
     if not quiet:
         info(" ".join(cmd))
+    if cmd and cmd[0] == "alr":
+        cmd = [alr_path()] + cmd[1:]
     try:
         return subprocess.call(cmd, cwd=REPO)
     except FileNotFoundError:
@@ -146,6 +184,8 @@ def alr_exec(args: list[str], quiet: bool = False) -> int:
 
 def capture(cmd: list[str]) -> tuple[int, str]:
     """Run and capture. Status is the command's own, never a pipeline's."""
+    if cmd and cmd[0] == "alr":
+        cmd = [alr_path()] + cmd[1:]
     try:
         p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     except FileNotFoundError:
@@ -571,6 +611,170 @@ def _version_line(out: str) -> str:
     return ""
 
 
+def _alr_asset() -> tuple[str, str]:
+    """(asset key, archive name) for this machine."""
+    import platform
+    m = platform.machine().lower()
+    arch = "aarch64" if m in ("arm64", "aarch64") else "x86_64"
+    if sys.platform.startswith("linux"):
+        osname = "linux"
+    elif sys.platform == "darwin":
+        osname = "macos"
+    elif os.name == "nt":
+        osname = "windows"
+        # Alire publishes no ARM64 Windows build. Windows on ARM runs the x64
+        # one under emulation, which may or may not work on a given machine.
+        arch = "x86_64"
+    else:
+        die(f"unsupported platform: {sys.platform}")
+    key = f"{arch}-{osname}"
+    return key, f"alr-{ALR_VERSION}-bin-{key}.zip"
+
+
+def _install_alr() -> bool:
+    """Download, verify and unpack Alire into MANAGED_ALR_DIR."""
+    import hashlib
+    import urllib.request
+    import zipfile
+
+    key, asset = _alr_asset()
+    expected = ALR_SHA256.get(key)
+    if not expected:
+        die(f"no pinned checksum for {key}")
+    url = (f"https://github.com/alire-project/alire/releases/download/"
+           f"v{ALR_VERSION}/{asset}")
+
+    info(f"downloading Alire {ALR_VERSION} for {key}")
+    tmp = REPO / "build" / "_alr_download.zip"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(url) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+    except Exception as err:                       # noqa: BLE001
+        print(f"  download failed: {err}")
+        return False
+
+    got = hashlib.sha256(tmp.read_bytes()).hexdigest()
+    if got != expected:
+        tmp.unlink(missing_ok=True)
+        die(f"checksum mismatch for {asset}\n  expected {expected}\n  got      {got}")
+    info("checksum verified")
+
+    if MANAGED_ALR_DIR.exists():
+        shutil.rmtree(MANAGED_ALR_DIR)
+    MANAGED_ALR_DIR.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(tmp) as z:
+        z.extractall(MANAGED_ALR_DIR)
+    tmp.unlink(missing_ok=True)
+
+    for name in ("alr", "alr.exe"):
+        exe = MANAGED_ALR_DIR / "bin" / name
+        if exe.is_file():
+            exe.chmod(0o755)
+            info(f"installed {rel(exe) if REPO in exe.parents else exe}")
+            return True
+    print(f"  unpacked, but no alr binary under {MANAGED_ALR_DIR}")
+    return False
+
+
+def cmd_setup(args) -> int:
+    """One command that makes a fresh machine ready to build.
+
+    Everything here is idempotent: run it again after a failure, or to repair an
+    installation, and it will skip what is already done.
+    """
+    ok = True
+    print(f"Setting up {rel(REPO)}\n")
+
+    # 1. Python -----------------------------------------------------------
+    v = sys.version_info
+    if (v.major, v.minor) < (3, 9):
+        die(f"Python 3.9+ required, found {v.major}.{v.minor}")
+    print(f"  OK       python {v.major}.{v.minor}.{v.micro}")
+
+    # 2. git, long paths, submodule ---------------------------------------
+    if not shutil.which("git"):
+        print("  MISSING  git -- install it from https://git-scm.com/downloads")
+        return 1
+    print("  OK       git")
+
+    if os.name == "nt":
+        # The drivers library carries a bundled Unity project whose paths exceed
+        # the Windows 260-character limit; without this a clone silently
+        # truncates and nothing builds.
+        rc, out = capture(["git", "config", "--global", "core.longpaths"])
+        if out.strip() != "true":
+            run(["git", "config", "--global", "core.longpaths", "true"], quiet=True)
+            print("  set      git core.longpaths=true (needed on Windows)")
+        else:
+            print("  OK       git core.longpaths")
+
+    board = REPO / "Code/libs/Ada_Drivers_Library/boards"
+    if not board.is_dir():
+        info("fetching the drivers submodule")
+        if run(["git", "submodule", "update", "--init", "--recursive"], quiet=True) != 0:
+            print("  MISSING  submodule -- run: git submodule update --init --recursive")
+            ok = False
+        else:
+            print("  OK       drivers submodule")
+    else:
+        print("  OK       drivers submodule")
+
+    # 3. Alire -------------------------------------------------------------
+    rc, out = capture(["alr", "--version"])
+    if rc == 0:
+        print(f"  OK       {_version_line(out)}")
+    else:
+        if not _install_alr():
+            print("\n  Could not install Alire automatically. Install it by hand from")
+            print("  https://alire.ada.dev/ and run this again.")
+            return 1
+        rc, out = capture(["alr", "--version"])
+        print(f"  OK       {_version_line(out)}")
+
+    if os.name == "nt":
+        # Otherwise alr stops to install MSYS2, which a cross-compile-only
+        # project never needs.
+        run(["alr", "settings", "--global", "--set", "msys2.do_not_install", "true"],
+            quiet=True)
+        print("  set      msys2.do_not_install=true")
+
+    # 4. Toolchain ----------------------------------------------------------
+    rc, _ = capture(["alr", "exec", "--", "arm-eabi-gcc", "-dumpversion"])
+    if rc == 0 and not args.force:
+        print("  OK       toolchain already selected")
+    else:
+        info(f"installing gnat_arm_elf={GNAT_VERSION} and gprbuild={GPRBUILD_VERSION}")
+        print("           about 550 MB, unpacking to roughly 2 GB -- this takes a while")
+        run(["alr", "settings", "--global", "--set", "toolchain.assistant", "false"],
+            quiet=True)
+        if run(["alr", "--non-interactive", "toolchain", "--select",
+                f"gnat_arm_elf={GNAT_VERSION}",
+                f"gprbuild={GPRBUILD_VERSION}"]) != 0:
+            print("  FAILED   toolchain install")
+            ok = False
+
+    # 5. pyocd (optional) ---------------------------------------------------
+    if not args.no_pyocd:
+        if shutil.which("pyocd"):
+            print("  OK       pyocd")
+        else:
+            info("installing pyocd (for flashing and debugging from this machine)")
+            rc = run([sys.executable, "-m", "pip", "install", "--user", "--quiet",
+                      "--upgrade", "pyocd>=0.44"], quiet=True)
+            if rc != 0:
+                print("  note     pyocd not installed -- you can still flash from the browser")
+
+    print()
+    if not ok:
+        print("Setup finished with problems. See the messages above.")
+        return 1
+    print("Setup complete. Checking:\n")
+    cmd_doctor(args)
+    print("\nNext: open this folder in VS Code and press Ctrl+Shift+B.")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     """Exit non-zero only for build-critical tools; flashing tools are optional."""
     print("Build tools (required):")
@@ -661,6 +865,14 @@ def main() -> int:
     p = sub.add_parser("als", help="point the Ada Language Server at a project")
     target_flags(p)
     p.set_defaults(func=cmd_als)
+
+    p = sub.add_parser("setup",
+                       help="install everything needed to build (run this first)")
+    p.add_argument("--no-pyocd", action="store_true",
+                   help="skip pyocd; flash from the browser instead")
+    p.add_argument("--force", action="store_true",
+                   help="reinstall the toolchain even if one is present")
+    p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("doctor", help="check the toolchain")
     p.set_defaults(func=cmd_doctor)
