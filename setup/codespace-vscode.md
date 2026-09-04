@@ -41,18 +41,40 @@ Everything from here is identical to the browser path:
 * **Ctrl+Shift+B** to build; the firmware lands at `build/main.hex`.
 * Commit with the **Source Control** panel, then **Sync Changes**.
 
-## 4. Flash the board
+## 4. Flash the board, straight from the Codespace
 
-> Your terminal, your build and your files are all on the remote machine, which
-> has **no USB port**. Plugging the board into your own laptop does not make it
-> visible to the Codespace — even though the editor looks local.
+You do not need to download anything.
 
-1. In the Explorer, right-click **`build/main.hex`** and choose **Download**.
-2. Open <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/> in
-   Chrome, Edge or Opera.
-3. **Connect**, drop the file in, **Flash**.
+> A Codespace runs in a data centre and has **no USB port**, so it cannot reach
+> your board itself. What it *can* do is serve the flasher page to your own
+> browser, which then talks to the board for it.
 
-Serial output appears in the **Output** panel on that page.
+1. Press **Ctrl+Shift+P**, choose **Tasks: Run Task**, then
+   **Flash from here (serve flasher)**.
+2. VS Code shows a notification that port **8080** is available. Open the
+   **PORTS** panel at the bottom, find *micro:bit flasher*, and click the
+   **globe** icon to open it in your browser.
+3. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
+4. Click **Connect**, pick the board, then **Flash**.
+
+Your build is already selected under **Your latest build** — the page is being
+served from the same Codespace that produced it.
+
+`Put_Line` output appears in the **Output** panel of that page.
+
+> It must be a real browser tab. VS Code's built-in **Simple Browser** is an
+> iframe, and WebUSB does not work inside one. Use the globe icon, which opens a
+> proper tab.
+
+Rebuild, then just click **Flash** again — the page always serves the current
+`build/main.hex`.
+
+### If you would rather not run a server
+
+Right-click **`build/main.hex`** in the Explorer, choose **Download**, and drop
+it onto <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>.
+That page also has ready-built examples if you just want to check your board and
+cable work.
 
 ---
 

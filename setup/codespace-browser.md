@@ -58,34 +58,42 @@ mb: firmware: build/main.elf, build/main.hex, build/main.bin
 > A Codespace runs on a machine in a data centre, so it has **no USB port** and
 > cannot flash your board directly. That is what the next step is for.
 
-## 4. Get the firmware onto your computer
+## 4. Flash the board, straight from the Codespace
 
-In the **Explorer** panel on the left, open the `build` folder, right-click
-**`main.hex`** and choose **Download**.
+You do not need to download anything.
 
-It lands in your browser's Downloads folder.
+> A Codespace runs in a data centre and has **no USB port**, so it cannot reach
+> your board itself. What it *can* do is serve the flasher page to your own
+> browser, which then talks to the board for it.
 
-## 5. Flash the board
+1. Press **Ctrl+Shift+P**, choose **Tasks: Run Task**, then
+   **Flash from here (serve flasher)**.
+2. VS Code shows a notification that port **8080** is available. Open the
+   **PORTS** panel at the bottom, find *micro:bit flasher*, and click the
+   **globe** icon to open it in your browser.
+3. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
+4. Click **Connect**, pick the board, then **Flash**.
 
-Plug the micro:bit into your computer with a **data** USB cable — some cables
-only carry power.
+Your build is already selected under **Your latest build** — the page is being
+served from the same Codespace that produced it.
 
-Open the flasher:
+`Put_Line` output appears in the **Output** panel of that page.
 
-**<https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>**
+> It must be a real browser tab. VS Code's built-in **Simple Browser** is an
+> iframe, and WebUSB does not work inside one. Use the globe icon, which opens a
+> proper tab.
 
-1. Click **Connect** and pick the micro:bit from the list.
-2. Drop in the `main.hex` you just downloaded.
-3. Click **Flash**.
+Rebuild, then just click **Flash** again — the page always serves the current
+`build/main.hex`.
 
-Your program runs, and its `Put_Line` output appears in the **Output** panel of
-that page.
+### If you would rather not run a server
 
-> **In a hurry?** The same page has ready-built examples in a dropdown. Flash
-> `music` or `accelerometer` to check your board and cable work, before worrying
-> about your own code.
+Right-click **`build/main.hex`** in the Explorer, choose **Download**, and drop
+it onto <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>.
+That page also has ready-built examples if you just want to check your board and
+cable work.
 
-## 6. Commit your work
+## 5. Commit your work
 
 Codespaces are not backups. Commit whenever you finish something:
 

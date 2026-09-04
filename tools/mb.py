@@ -179,7 +179,7 @@ def build_one(pid: str, gpr: Path, quiet: bool = False) -> bool:
     return run(cmd) == 0
 
 
-def stage_firmware(gpr: Path) -> bool:
+def stage_firmware(gpr: Path, pid: str = "") -> bool:
     """Copy the ELF to build/main.elf and derive .hex/.bin next to it."""
     exe = built_exe(gpr)
     if not exe.is_file():
@@ -197,6 +197,8 @@ def stage_firmware(gpr: Path) -> bool:
     if not text.startswith(":") or ":00000001FF" not in text.splitlines()[-1]:
         die("produced .hex is not valid Intel HEX")
 
+    if pid:
+        (BUILD / "last-project.txt").write_text(pid + "\n")
     alr_exec([SIZE, rel(elf)], quiet=True)
     info(f"firmware: {rel(elf)}, {rel(hexf)}, {rel(BUILD / 'main.bin')}")
     return True
@@ -225,7 +227,7 @@ def cmd_build(args) -> int:
     info(f"building {pid} ({rel(gpr)})")
     if not build_one(pid, gpr):
         return 1
-    stage_firmware(gpr)
+    stage_firmware(gpr, pid)
     return 0
 
 
@@ -436,6 +438,88 @@ def cmd_list(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    """Serve the flasher from this machine, with the firmware you just built.
+
+    The point is Codespaces. A Codespace has no USB, so the firmware normally has
+    to be downloaded and then handed to the flasher page by hand. Serving the
+    page from inside the Codespace instead puts the page and the freshly built
+    hex on the same origin, so the page can simply offer it -- no download, no
+    drag.
+
+    The forwarded URL is https://<codespace>-<port>.app.github.dev, which is a
+    secure context, and WebUSB requires one.
+    """
+    import http.server
+    import json
+    import socketserver
+
+    if not args.no_build:
+        rc = cmd_build(args)
+        if rc:
+            return rc
+
+    hexf = BUILD / "main.hex"
+    if not hexf.is_file():
+        die("nothing built yet - run: mb.py build")
+
+    site = BUILD / "site"
+    if site.exists():
+        shutil.rmtree(site)
+    shutil.copytree(REPO / "docs", site)
+    firmware = site / "firmware"
+    firmware.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(hexf, firmware / "main.hex")
+
+    last = BUILD / "last-project.txt"
+    built = last.read_text().strip() if last.is_file() else "your project"
+    manifest = {
+        "commit": "", "built": "",
+        "projects": [{
+            "id": built,
+            "family": "build",
+            "label": f"{built} (just built here)",
+            "hex": "main.hex",
+            "bytes": hexf.stat().st_size,
+            "summary": "the firmware currently in build/",
+        }],
+    }
+    (firmware / "index.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(site), **kw)
+
+        def end_headers(self):
+            # Always hand out the current build, never a cached one.
+            self.send_header("Cache-Control", "no-store")
+            super().end_headers()
+
+        def log_message(self, fmt, *a):
+            pass
+
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("0.0.0.0", args.port), Handler) as httpd:
+        print()
+        info(f"serving the flasher on port {args.port}, offering: {built}")
+        print()
+        print("  In a Codespace: open the PORTS panel, find this port, and click")
+        print("  the globe icon to open it in your browser.")
+        print()
+        print("  It must be a real browser tab. VS Code's Simple Browser is an")
+        print("  iframe and WebUSB will not work there.")
+        print()
+        print(f"  Locally: http://localhost:{args.port}/")
+        print()
+        print("  Press Ctrl+C to stop.")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print()
+            info("stopped")
+    return 0
+
+
 def cmd_clean(args) -> int:
     target = BUILD.resolve()
     if REPO not in target.parents and target != BUILD.resolve():
@@ -562,6 +646,14 @@ def main() -> int:
     p.add_argument("--commit", default="", help="commit sha to record in the manifest")
     p.add_argument("--built", default="", help="ISO timestamp to record in the manifest")
     p.set_defaults(func=cmd_gallery)
+
+    p = sub.add_parser("serve",
+                       help="serve the flasher with your latest build (for Codespaces)")
+    target_flags(p)
+    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--no-build", action="store_true")
+    p.add_argument("--all", action="store_false", help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_serve, all=False)
 
     p = sub.add_parser("clean", help="remove the build tree")
     p.set_defaults(func=cmd_clean)

@@ -41,6 +41,10 @@ Connect the board, pick a firmware, flash it, and read `Put_Line` output at
 There are ready-built examples in the picker, so you can flash `music` or
 `accelerometer` and see the board do something before writing any code.
 
+**Working in a Codespace?** You do not have to download anything. Run the
+**Flash from here (serve flasher)** task and open the forwarded port — the page
+is then served from your Codespace with your own build already loaded.
+
 ## What is in here
 
 ```
