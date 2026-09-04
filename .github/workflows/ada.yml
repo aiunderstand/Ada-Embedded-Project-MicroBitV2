@@ -140,22 +140,31 @@ jobs:
     name: All 43 projects build
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
     runs-on: ubuntu-24.04
-    # Runs in the prebuilt toolchain image, so there is nothing to install and a
-    # single artifact defines the toolchain here and in every Codespace.
-    #
-    # Deliberately NOT used for the student-facing "build" job, which must stay
-    # self-contained so a student's CI never depends on this registry; nor for
-    # "matrix", whose whole purpose is to prove the documented native install
-    # still works on all three operating systems.
-    container:
-      image: ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: 'true'
+      # TODO: once ghcr.io/aiunderstand/ada-microbit-toolchain:gnat-15.1.2 has
+      # been published by devcontainer-image.yml (which runs on push to main),
+      # this job can run in that image and drop the install below.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-ubuntu-24.04-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
       # A quarantined project that starts passing is reported XPASS and fails
       # this job, so tools/known_failures.txt can only ever shrink.
       - name: Build every project
