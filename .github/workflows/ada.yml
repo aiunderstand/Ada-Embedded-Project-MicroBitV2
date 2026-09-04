@@ -41,7 +41,11 @@ jobs:
           set -euo pipefail
           curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
           unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
           export PATH="$HOME/alr/bin:$PATH"
           alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
           alr settings --global --set toolchain.assistant false
@@ -104,7 +108,11 @@ jobs:
           esac
           curl -fsSL -o "$RUNNER_TEMP/alr.zip" "https://github.com/alire-project/alire/releases/download/v2.1.1/${asset}"
           unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
           export PATH="$HOME/alr/bin:$PATH"
           # Setting toolchain.dir removes every per-OS path assumption.
           alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
@@ -144,7 +152,11 @@ jobs:
           set -euo pipefail
           curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
           unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
           export PATH="$HOME/alr/bin:$PATH"
           alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
           alr settings --global --set toolchain.assistant false
@@ -175,7 +187,11 @@ jobs:
           set -euo pipefail
           curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
           unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
-          echo "$HOME/alr/bin" >> "$GITHUB_PATH"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
           export PATH="$HOME/alr/bin:$PATH"
           alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
           alr settings --global --set toolchain.assistant false
