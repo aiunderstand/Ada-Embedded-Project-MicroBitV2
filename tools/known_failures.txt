@@ -1,0 +1,10 @@
+# Projects known not to build, skipped as XFAIL by:  mb.py build --all
+#
+# A project listed here that STARTS building is reported as XPASS and fails the
+# run, so this list can only ever shrink. Delete a line the moment it is fixed.
+#
+# Currently empty: all 43 projects build. The 15 zfp examples were fixed by
+# adopting fork PR #6's pattern across the whole family -- they inherit
+# MicroBit_v2_ZFP'Runtime ("Ada") and MicroBit_v2_ZFP.Linker_Switches instead of
+# hardcoding the removed "zfp-cortex-m4f" runtime and a Windows-only linker
+# script path.

@@ -1,17 +1,20 @@
 {
+    // One configuration for every project. Whatever you built last is staged at
+    // build/main.elf, so F5 always debugs the thing you just built and this file
+    // never needs editing.
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "cortex-debug",
-            "cwd": "${workspaceFolder}",
-            "preLaunchTask": "Build",
-            "executable": "${workspaceFolder}/Code/obj/main",
             "name": "Debug (PyOCD)",
+            "type": "cortex-debug",
             "request": "launch",
-            //"runToEntryPoint": "main", //(Uncomment if you want to break on start)
-            "showDevDebugOutput": "vscode",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/main.elf",
             "servertype": "pyocd",
-            "targetId": "nrf52833"
+            "targetId": "nrf52833",
+            "preLaunchTask": "Build",
+            "showDevDebugOutput": "vscode"
+            // "runToEntryPoint": "main"  // uncomment to break on start
         }
     ]
 }

@@ -1,35 +1,240 @@
 name: Ada (GNAT)
+
 'on':
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+env:
+  GNAT_VERSION: 15.1.2      # NOT 16.1.0: it fails to link (.eh_frame LMA overlaps .data)
+  GPRBUILD_VERSION: 25.0.1  # 22.0.1 has no aarch64 build at all
+  UPSTREAM: aiunderstand/Ada-Embedded-Project-MicroBitV2
+
 jobs:
+  # The only job that runs in a student's copy of this template. Deliberately
+  # self-contained and single-platform: a student repo should never burn Actions
+  # minutes on a macOS runner (billed 10x) for a failure unrelated to their code.
   build:
+    name: Build and package firmware
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
 
-      - name: Setup GNAT ARM Toolchain
-        run: |
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-14.2.0-1/gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          tar xf gnat-arm-elf-linux64-x86_64-14.2.0-1.tar.gz
-          echo "${PWD}/gnat-arm-elf-linux64-x86_64-14.2.0-1/bin" >> $GITHUB_PATH        
+      # Provision through Alire, exactly as a student does. Alire maps a crate
+      # version to the right release tarball itself -- the GNAT-FSF asset names
+      # do not track the crate version (crate gnat_arm_elf 15.1.2 lives in
+      # release gnat-15.1.0-2, crate gprbuild 25.0.1 in gprbuild-25.0.0-1), so
+      # hardcoding URLs here silently rots.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-build-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
 
-          wget -q https://github.com/alire-project/GNAT-FSF-builds/releases/download/gprbuild-22.0.0-1/gprbuild-x86_64-linux-22.0.0-1.tar.gz
-          tar xf gprbuild-x86_64-linux-22.0.0-1.tar.gz
-          echo "${PWD}/gprbuild-x86_64-linux-22.0.0-1/bin" >> $GITHUB_PATH
-      
-      - name: Build
-        run: 'gprbuild -j0 -P Code/itrs.gpr Code/src/main.adb -cargs:ada -gnatef'
-      
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+
+      # mb.py builds and stages build/main.elf/.hex/.bin, asserting the hex is
+      # valid Intel HEX. DAPLink drag-and-drop takes hex or raw binary, not ELF.
+      - name: Build and package firmware
+        run: python3 tools/mb.py build
+
+      - uses: actions/upload-artifact@v4
         with:
           name: ITRS
-          path: Code/obj/main
+          path: |
+            build/main.hex
+            build/main.bin
+            build/main.elf
+
+  # ---- everything below runs only in the upstream template repository ----
+
+  matrix:
+    name: Build on ${{ matrix.os }}
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The submodule carries a bundled Unity project whose paths exceed the
+      # 260-character Windows MAX_PATH, so checkout fails outright with
+      # "Filename too long" unless long paths are enabled first.
+      - name: Enable Git long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - uses: actions/cache@v4
+        with:
+          # ~/.config/alire holds the index clone and the toolchain selection;
+          # without it every run re-clones the index even on a cache hit.
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-${{ matrix.os }}-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+
+      - name: Install Alire and the pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ runner.os }}" in
+            Linux)   asset=alr-2.1.1-bin-x86_64-linux.zip ;;
+            macOS)   asset=alr-2.1.1-bin-aarch64-macos.zip ;;
+            Windows) asset=alr-2.1.1-bin-x86_64-windows.zip ;;
+          esac
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" "https://github.com/alire-project/alire/releases/download/v2.1.1/${asset}"
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          # Setting toolchain.dir removes every per-OS path assumption.
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          # Without this, alr offers to install msys2 on Windows and blocks.
+          alr settings --global --set msys2.do_not_install true
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+
+      - name: Build the template
+        shell: bash
+        run: python3 tools/mb.py build
+
+      - name: Working tree must be clean
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain -uall)" || { git status --porcelain -uall; exit 1; }
+          test -z "$(git -C Code/libs/Ada_Drivers_Library status --porcelain -uall)"
+
+  examples:
+    name: All 43 projects build
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-ubuntu-24.04-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+      # A quarantined project that starts passing is reported XPASS and fails
+      # this job, so tools/known_failures.txt can only ever shrink.
+      - name: Build every project
+        run: python3 tools/mb.py build --all
+
+  prove:
+    name: SPARK examples prove clean
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/adl-toolchain
+            ~/.config/alire
+            ~/.cache/alire
+          key: alire-prove-${{ env.GNAT_VERSION }}-${{ env.GPRBUILD_VERSION }}
+      - name: Install Alire and the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/alr.zip" https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip -q -o "$RUNNER_TEMP/alr.zip" -d "$HOME/alr"
+          # GITHUB_PATH is read by every shell, not just bash, so a POSIX path
+          # like /c/Users/... is unusable from pwsh on Windows. Convert it.
+          alr_bin="$HOME/alr/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then alr_bin="$(cygpath -w "$alr_bin")"; fi
+          echo "$alr_bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/alr/bin:$PATH"
+          alr settings --global --set toolchain.dir "${{ runner.temp }}/adl-toolchain"
+          alr settings --global --set toolchain.assistant false
+          alr --non-interactive toolchain --select \
+              "gnat_arm_elf=${GNAT_VERSION}" "gprbuild=${GPRBUILD_VERSION}"
+      # mb.py passes --checks-as-errors=on, because gnatprove otherwise reports
+      # an unproved check and still exits 0 -- a proof gate that cannot fail is
+      # not a gate.
+      - name: Prove every spark/ example
+        run: python3 tools/mb.py prove --all-spark --mode=prove --level=1
+
+  renamed:
+    name: Works when the template is renamed
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      # A student names their repository whatever they like. This is the bug
+      # class that made the devcontainer fail for everyone.
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+          path: My-Student-Project-2026
+      - name: No path may hardcode this repository's name
+        working-directory: My-Student-Project-2026
+        run: |
+          set -euo pipefail
+          if grep -rn 'Ada-Embedded-Project-MicroBitV2' .devcontainer .vscode tools; then
+            echo "::error::a repository-specific path is baked into the template"
+            exit 1
+          fi
+          echo "no hardcoded repository name"
+
+  lint:
+    name: Template hygiene
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tasks must stay platform agnostic
+        run: |
+          set -euo pipefail
+          fail=0
+          grep -rn 'zshrc' .vscode && { echo "::error::.vscode depends on a shell rc file"; fail=1; }
+          grep -rn '"\$ada"' .vscode && { echo "::error::\$ada is not a real problem matcher"; fail=1; }
+          grep -rn '"type": *"shell"' .vscode && { echo "::error::use type:process, not type:shell"; fail=1; }
+          exit $fail

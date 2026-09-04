@@ -1,0 +1,17 @@
+name = "itrs"
+version = "1.0.0"
+description = "USN ITRS project template for the BBC micro:bit v2"
+authors = ["USN"]
+maintainers = ["Steven Bos <sbosmaster@gmail.com>"]
+maintainers-logins = ["aiunderstand"]
+licenses = "MIT"
+
+project-files = ["Code/itrs.gpr"]
+auto-gpr-with = false
+
+[[depends-on]]
+gnat_arm_elf = "=15.1.2"
+gnatprove    = "=15.1.0"
+
+[configuration]
+disabled = true

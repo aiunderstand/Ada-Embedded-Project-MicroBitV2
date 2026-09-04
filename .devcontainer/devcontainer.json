@@ -3,10 +3,17 @@
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
     "features": {
         "ghcr.io/devcontainers/features/python:1": {
-            "version": "3.13.7"
+            "version": "3.13"
         }
     },
+
     "containerUser": "root",
+    "remoteUser": "root",
+
+    // USB passthrough only ever works on a Linux host. Docker Desktop on macOS
+    // and Windows cannot pass USB to the Linux VM, and a cloud Codespace has no
+    // USB at all -- those can build, but you flash by dragging build/main.hex
+    // onto the MICROBIT drive. See the README.
     "runArgs": [
         "--privileged",
         "--device-cgroup-rule=c 189:* rmw"
@@ -15,16 +22,20 @@
         "source=/dev,target=/dev,type=bind",
         "source=/run/udev,target=/run/udev,type=bind,readonly"
     ],
-    "onCreateCommand": [
-        "sh",
-        "-c",
-        "apt update && apt install -y libusb-1.0-0-dev libusb-1.0-0 libusb-dev udev usbutils && pip install libusb pyocd && if [ \"$(uname -m)\" = \"x86_64\" ]; then wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-x86_64-linux.zip -O /workspaces/alr.zip; else wget https://github.com/alire-project/alire/releases/download/v2.1.0/alr-2.1.0-bin-aarch64-linux.zip -O /workspaces/alr.zip; fi && unzip -o /workspaces/alr.zip -d /workspaces/alr && chmod +x /workspaces/alr/bin/alr && rm -rf /workspaces/alr.zip"
-    ],
-    "postCreateCommand": [
-        "sh",
-        "-c",
-        "cd /workspaces/Ada-Embedded-Project-MicroBitV2 && git submodule update --init --recursive && cd /workspaces/alr && pwd && export PATH=$(realpath bin):$PATH && alr --version && alr --non-interactive toolchain --select gnat_arm_elf gprbuild && echo \"export PATH=/workspaces/alr/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gnat_arm_elf_*' -print -quit)/bin:$(find /root/.local/share/alire/toolchains/ -type d -name 'gprbuild_*' -print -quit)/bin:$PATH\" >> /root/.zshrc && echo 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0d28\", ATTR{idProduct}==\"0204\", MODE=\"0666\"' > /etc/udev/rules.d/50-microbit.rules && echo 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0d28\", ATTR{idProduct}==\"0204\", GROUP=\"root\"' >> /etc/udev/rules.d/50-microbit.rules && udevadm control --reload-rules && udevadm trigger || true"
-    ],
+
+    // onCreateCommand runs before the workspace content is guaranteed to be
+    // final; updateContentCommand is the step that also runs during Codespaces
+    // prebuilds, which is where the submodule must be fetched.
+    "onCreateCommand": "bash .devcontainer/setup.sh",
+    "updateContentCommand": "git config --global --add safe.directory '*' && git submodule update --init --recursive",
+    "postCreateCommand": "python3 tools/mb.py doctor",
+
+    // The toolchain is symlinked into /usr/local/bin by setup.sh, so PATH needs
+    // no per-install hashed directory and nothing has to source a shell rc.
+    "remoteEnv": {
+        "PATH": "/usr/local/bin:${containerEnv:PATH}"
+    },
+
     "customizations": {
         "vscode": {
             "extensions": [
@@ -38,11 +49,12 @@
                 "marus25.cortex-debug"
             ],
             "settings": {
-                "terminal.integrated.defaultProfile.linux": "zsh",
-                "editor.formatOnSave": true,
-                "ada.projectFile": "Code/itrs.gpr"
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "editor.formatOnSave": true
+                // Deliberately no "ada.projectFile": it would override the
+                // committed .als.json in every Codespace and stop
+                // "mb.py als --use <project>" from switching projects.
             }
         }
-    },
-    "remoteUser": "root"
+    }
 }

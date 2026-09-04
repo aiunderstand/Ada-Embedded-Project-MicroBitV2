@@ -5,7 +5,9 @@ updates:
   - package-ecosystem: gitsubmodule
     directory: /
     schedule:
-      interval: daily
+      # Monthly, not daily: this file is copied into every student repository,
+      # and a daily bump can move the submodule under a student mid-semester.
+      interval: monthly
       time: "18:00"
       # Use Central European Time (GMT +01:00)
       timezone: "Europe/Oslo"

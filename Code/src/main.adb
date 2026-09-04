@@ -5,9 +5,10 @@ use MicroBit;
 -- Project members: [name, name, .. ]
 
 
---This is a project template for a Jorvik profile (a less restrictive Ravenscar) for the MicroBit v2 such that we have a language supported real-time OS for embedded targets
---It requires the nRF52833 Jorvik runtime files. They can be found in the folder "runtime profiles" and need to be copied to your earm-eabi compiler toolchain
---In future version of GNATstudio this profile is automatically available and this step can be skipped (for status see: https://github.com/AdaCore/bb-runtimes/pull/67)
+--This is a project template for the MicroBit v2, built against the embedded-nrf52833
+--runtime (a Ravenscar/Jorvik-style profile) so we have a language-supported real-time
+--OS for embedded targets. The runtime ships with the gnat_arm_elf toolchain that Alire
+--installs, so there is nothing to copy by hand.
 
 --Check out the many examples in the ADL for the MicroBit v2 to see:
 --  1) How the various drivers can be used like the accelerometer,speaker  or wireless communication via radio

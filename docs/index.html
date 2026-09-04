@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>micro:bit v2 serial console</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1b1b19; --muted: #6b6b66; --line: #e2e2dd;
+    --card: #ffffff; --accent: #1a6b4a; --accent-fg: #ffffff;
+    --warn-bg: #fdf6e3; --warn-line: #e8d9a8; --code-bg: #f2f2ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --fg: #ececE6; --muted: #9a9a92; --line: #2e2e2a;
+      --card: #1e1e1b; --accent: #57b98a; --accent-fg: #10241a;
+      --warn-bg: #2a2418; --warn-line: #4a4028; --code-bg: #232320;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614; --fg: #ececE6; --muted: #9a9a92; --line: #2e2e2a;
+    --card: #1e1e1b; --accent: #57b98a; --accent-fg: #10241a;
+    --warn-bg: #2a2418; --warn-line: #4a4028; --code-bg: #232320;
+  }
+  body { background: var(--bg); color: var(--fg);
+         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         padding: 2rem 1.25rem 4rem; }
+  main { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  .bar { display: flex; gap: .625rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  button { font: inherit; padding: .5rem .95rem; border-radius: .5rem; cursor: pointer;
+           border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  label { color: var(--muted); }
+  select { font: inherit; padding: .4rem .5rem; border-radius: .4rem;
+           border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  #status { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #out { background: var(--card); border: 1px solid var(--line); border-radius: .6rem;
+         padding: .9rem 1rem; height: 24rem; overflow: auto; white-space: pre-wrap;
+         word-break: break-word; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         margin: 0 0 1rem; }
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-line);
+          border-radius: .6rem; padding: .85rem 1rem; margin: 0 0 1rem; }
+  .note h2 { font-size: .95rem; margin: 0 0 .4rem; }
+  .note p, .note li { margin: .3rem 0; }
+  code { background: var(--code-bg); padding: .1rem .35rem; border-radius: .3rem;
+         font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  footer { color: var(--muted); font-size: .875rem; margin-top: 1.5rem;
+           border-top: 1px solid var(--line); padding-top: 1rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>micro:bit v2 serial console</h1>
+  <p class="sub">Reads <code>Put_Line</code> output from your Ada program over USB — nothing to install.</p>
+
+  <div id="unsupported" class="note" hidden>
+    <h2>This browser cannot talk to the micro:bit</h2>
+    <p>Web Serial works in <strong>Chrome, Edge and Opera</strong> on desktop. Safari and
+       Firefox do not implement it, and there is no polyfill.</p>
+    <p>You can still see output by flashing the board and using the serial monitor in
+       VS Code instead.</p>
+  </div>
+
+  <div class="bar">
+    <button id="connect" class="primary">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <label for="baud">Baud</label>
+    <select id="baud">
+      <option value="115200" selected>115200</option>
+      <option value="9600">9600</option>
+    </select>
+    <button id="clear">Clear</button>
+    <span id="status">not connected</span>
+  </div>
+
+  <pre id="out" aria-live="polite" aria-label="Serial output"></pre>
+
+  <div class="note">
+    <h2>If Connect shows no devices</h2>
+    <ul>
+      <li>Use the cable that came with the board — some charge-only USB cables carry no data.</li>
+      <li><strong>Linux:</strong> add yourself to the <code>dialout</code> group
+          (<code>sudo usermod -aG dialout $USER</code>, then log out and back in).
+          Chromium installed as a <em>snap</em> cannot use Web Serial at all; install the
+          <code>.deb</code> build instead.</li>
+      <li>Close anything else holding the port — VS Code's serial monitor, or a running
+          <code>pyocd</code>.</li>
+    </ul>
+  </div>
+
+  <footer>
+    This page claims the board's CDC serial interface only, so it does
+    <strong>not</strong> conflict with <code>pyocd</code> flashing or debugging.
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const out = $("out"), status = $("status");
+  const btnConnect = $("connect"), btnDisconnect = $("disconnect"), btnClear = $("clear");
+
+  if (!("serial" in navigator)) {
+    $("unsupported").hidden = false;
+    btnConnect.disabled = true;
+    status.textContent = "unsupported browser";
+    return;
+  }
+
+  // Cap the buffer. A naive `textContent +=` on every chunk is O(n^2) and will
+  // lock the tab for anyone printing in a loop -- which is exactly what the
+  // examples do.
+  const MAX_CHARS = 200_000;
+  let buffer = "";
+  let pending = false;
+
+  function append(text) {
+    buffer += text;
+    if (buffer.length > MAX_CHARS) buffer = buffer.slice(-MAX_CHARS);
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const stuck = out.scrollTop + out.clientHeight >= out.scrollHeight - 24;
+      out.textContent = buffer;
+      if (stuck) out.scrollTop = out.scrollHeight;
+    });
+  }
+
+  let port = null, reader = null, keepReading = false;
+
+  async function readLoop() {
+    const decoder = new TextDecoderStream();
+    const closed = port.readable.pipeTo(decoder.writable).catch(() => {});
+    reader = decoder.readable.getReader();
+    try {
+      while (keepReading) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) append(value);
+      }
+    } catch (err) {
+      append(`\n[read error: ${err.message}]\n`);
+    } finally {
+      try { reader.releaseLock(); } catch {}
+      await closed;
+    }
+  }
+
+  btnConnect.addEventListener("click", async () => {
+    try {
+      // 0x0d28 is the micro:bit's DAPLink interface chip.
+      port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0d28 }] });
+      await port.open({ baudRate: Number($("baud").value) });
+      keepReading = true;
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+      status.textContent = "connected";
+      append(`[connected at ${$("baud").value} baud]\n`);
+      readLoop();
+    } catch (err) {
+      // A user closing the chooser is not an error worth shouting about.
+      if (err.name === "NotFoundError") { status.textContent = "no device selected"; return; }
+      status.textContent = "connection failed";
+      append(`\n[${err.name}: ${err.message}]\n`);
+    }
+  });
+
+  btnDisconnect.addEventListener("click", async () => {
+    keepReading = false;
+    try { await reader?.cancel(); } catch {}
+    try { await port?.close(); } catch {}
+    port = null;
+    btnConnect.disabled = false;
+    btnDisconnect.disabled = true;
+    status.textContent = "not connected";
+    append("[disconnected]\n");
+  });
+
+  btnClear.addEventListener("click", () => { buffer = ""; out.textContent = ""; });
+})();
+</script>
+</body>
+</html>
