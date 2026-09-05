@@ -102,9 +102,48 @@ alt, cmd — `alt+cmd+f`, never `cmd+alt+f`. The platform follows the user agent
 so a `newContext({ userAgent })` spoofing Windows or Linux yields those tables
 from the same server. Chromium headless on macOS reports the Mac tables.
 
-What this still cannot do: a Codespace. There is no remote, so the
-install-on-attach path (`postAttachCommand` → `mb.py extension --install`) is
-covered only by the fake-`code` test in `tools/test_extension.mjs`.
+What test-web cannot do is a *remote* — and a Codespace is a remote. Two bugs
+lived only there: `vscode.tasks.executeTask` throwing `NotSupported` in the web
+worker host (test-web has no tasks to fetch, so the build was silently skipped),
+and the same-version reinstall on attach leaving a half-updated window. For
+those, run VS Code's own server:
+
+```bash
+CODE="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+mkdir -p "$SP/serve-web-data/data/User" && echo '{ "security.workspace.trust.enabled": false,
+  "workbench.startupEditor": "none" }' > "$SP/serve-web-data/data/User/settings.json"
+"$CODE" serve-web --without-connection-token --accept-server-license-terms --port 8100 \
+    --server-data-dir "$SP/serve-web-data" --cli-data-dir "$SP/cli-data" --default-folder <repo>
+```
+
+The browser at `http://localhost:8100/` is the client, the server is the remote,
+and the extension runs in the browser's web worker host exactly as in a
+Codespace. Install the way `postAttachCommand` does — by typing into the
+**integrated terminal**, where `code` is the remote CLI with the IPC hook, so
+the running window sees the install happen:
+
+- open a terminal via the palette (`Terminal: Create New Terminal`; the backtick
+  chord does not survive headless key mapping), wait, send one throwaway Enter
+  — the first terminal eats the first keystrokes — then type
+  `code --install-extension build/microbit-flasher-0.1.0.vsix --force > $SP/t.log 2>&1`
+  and read the log from disk rather than scraping xterm rows;
+- the server's extensions live in `$SP/serve-web-data/extensions`; pass
+  `VSCODE_EXTENSIONS=` there when exercising `mb.py extension --install` so its
+  installed-copy check can find them;
+- `Developer: Reload Window` from the palette is a clean re-attach.
+
+Then the same assertions as above: the status-bar item is activation, the
+notification after the chord is the command running. With no board, a fully
+working flow ends in a USB error *after* the build has run — check
+`build/main.hex`'s mtime moved.
+
+**Check the cache headers when code seems stale:**
+`curl -sI 'http://localhost:8100/vscode-remote-resource?path=<extensions>/<dir>/extension.js'`
+shows `cache-control: public, max-age=31536000`. A same-version reinstall keeps
+the URL, so a reload can run old code under a new manifest; that is why the
+packaged version is content-derived, and why a test here should install a
+*changed* build and confirm the new code runs after the reload (a marker line
+in the output channel is enough).
 
 ## 6. Counting the steps
 

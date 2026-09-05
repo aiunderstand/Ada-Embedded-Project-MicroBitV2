@@ -132,29 +132,40 @@ async function cmdConnect() {
   }
 }
 
-/** Run the workspace "Build" task and wait for it. */
+const BUILD_TASK = "Build";
+const BUILD_TIMEOUT_MS = 10 * 60 * 1000; // a cold Codespace build can take minutes
+
+/** Run the workspace "Build" task and wait for it; null when there is none. */
 async function runBuildTask() {
   let task;
   try {
     const all = await vscode.tasks.fetchTasks();
-    task = all.find((t) => t.name === "Build");
+    task = all.find((t) => t.name === BUILD_TASK);
   } catch {
-    return false;
+    return null;
   }
   if (!task) {
-    return false; // no task to run; fall back to whatever is already built
+    return null; // no task to run; fall back to whatever is already built
   }
   log("Building...");
   setStatus("building", true);
-  const exec = await vscode.tasks.executeTask(task);
-  return new Promise((resolve) => {
+  // Not vscode.tasks.executeTask: in the *web worker* extension host that only
+  // accepts CustomExecution tasks and throws NotSupported for a shell/process
+  // task, which is what "Build" is. The workbench command runs any task, on the
+  // remote, from any host; completion arrives as an ordinary task event.
+  const finished = new Promise((resolve) => {
+    const timer = setTimeout(() => { sub.dispose(); resolve(null); }, BUILD_TIMEOUT_MS);
     const sub = vscode.tasks.onDidEndTaskProcess((e) => {
-      if (e.execution === exec) {
+      if (e.execution.task.name === BUILD_TASK) {
+        clearTimeout(timer);
         sub.dispose();
         resolve(e.exitCode === 0);
       }
     });
   });
+  await vscode.commands.executeCommand("workbench.action.tasks.runTask", BUILD_TASK);
+  log(`Task "${BUILD_TASK}" started; waiting for it to finish...`);
+  return finished;
 }
 
 async function cmdFlash() {
@@ -164,7 +175,10 @@ async function cmdFlash() {
     // be flashed silently. Previously this failed with "build first" if you
     // forgot, and the status-bar button could flash yesterday's firmware.
     const built = await runBuildTask();
-    if (built === false && !(await hexExists())) {
+    if (built === false) {
+      throw new Error("The build failed; see the terminal. Nothing was flashed.");
+    }
+    if (built === null && !(await hexExists())) {
       throw new Error(
         "Nothing to flash. Build first: Ctrl+Shift+B, or python3 tools/mb.py build"
       );
@@ -187,12 +201,17 @@ async function cmdFlash() {
         });
       }
     );
-    setStatus("Flash micro:bit (connected)", false);
     log(`Flashed ${HEX_PATH}.`);
     vscode.window.showInformationMessage("micro:bit flashed.");
   } catch (err) {
-    log(`Error: ${err.message}`);
+    // The stack goes to the output channel: "NotSupported" alone says nothing
+    // about which VS Code API refused, and that is the question in a web host.
+    log(`Error: ${err.stack || err.message}`);
     vscode.window.showErrorMessage(`micro:bit: ${err.message}`);
+  } finally {
+    // Never leave the "building" spinner behind after a failure.
+    const connected = connection && connection.status === "Connected";
+    setStatus(connected ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
   }
 }
 

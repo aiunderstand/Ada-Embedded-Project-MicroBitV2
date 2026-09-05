@@ -10,11 +10,35 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fail = [];
 const check = (c, w) => { if (!c) fail.push(w); };
 
-execFileSync("python3", ["tools/mb.py", "extension"], { cwd: root, stdio: "pipe" });
-
+const packaged = () => {
+  const out = execFileSync("python3", ["tools/mb.py", "extension"], { cwd: root, encoding: "utf8" });
+  const m = /packaged (build\/\S+\.vsix)/.exec(out);
+  return m ? path.join(root, m[1]) : null;
+};
+const vsix = packaged();
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "extension/package.json"), "utf8"));
-const vsix = path.join(root, "build", `${pkg.name}-${pkg.version}.vsix`);
-check(fs.existsSync(vsix), "mb.py extension should produce a .vsix");
+check(vsix && fs.existsSync(vsix), "mb.py extension should produce a .vsix");
+
+// The version is content-derived, because VS Code Server serves extension.js
+// with a one-year max-age at a URL that contains only the version: same
+// version + new code = the browser keeps running the old code after a reload.
+const packagedVersion = (file) => execFileSync("python3", ["-c",
+  `import zipfile,json;print(json.loads(zipfile.ZipFile(${JSON.stringify(file)}).read("extension/package.json"))["version"])`],
+  { encoding: "utf8" }).trim();
+const v1 = packagedVersion(vsix);
+check(v1 !== pkg.version && v1.startsWith(pkg.version.split(".").slice(0, 2).join(".") + "."),
+      `the packaged version should be major.minor.<content hash>, got ${v1}`);
+check(packaged() === vsix && packagedVersion(vsix) === v1, "packaging twice must give the same version");
+const extSrc = path.join(root, "extension/extension.js");
+const original = fs.readFileSync(extSrc, "utf8");
+fs.writeFileSync(extSrc, original + "\n// cache-busting probe\n");
+let probe = null;
+try { probe = packaged(); } finally { fs.writeFileSync(extSrc, original); }
+check(probe !== vsix && packagedVersion(probe) !== v1,
+      "a change to extension.js must change the packaged version (new URL for the browser)");
+check(packaged() === vsix, "restoring the source restores the version");
+check(fs.readdirSync(path.join(root, "build")).filter((f) => /^microbit-flasher-.*\.vsix$/.test(f)).length === 1,
+      "build/ must hold exactly one package, so nobody installs a stale one");
 
 // Unzip without a zip library: python is already a dependency.
 const tmp = fs.mkdtempSync("/tmp/vsix-");
@@ -45,6 +69,14 @@ check(src.includes("partial: false"),
 // complaint about the old flow.
 check(src.includes("runBuildTask"),
       "flash must build first, so it cannot flash a stale hex");
+// The web worker extension host's tasks API throws NotSupported for anything
+// but a CustomExecution task, so executeTask() on the process task "Build"
+// fails before reaching the board. Found in a real VS Code Server; the
+// workbench command runs any task from any host.
+check(!/tasks\.executeTask\s*\(/.test(src),
+      "must not call vscode.tasks.executeTask: NotSupported in the web worker host");
+check(src.includes('"workbench.action.tasks.runTask"'),
+      "the build must run through workbench.action.tasks.runTask");
 const manifestPkg = JSON.parse(fs.readFileSync(path.join(tmp, "extension/package.json"), "utf8"));
 check((manifestPkg.contributes.keybindings || []).some(k => k.command === "microbit.flash"),
       "flash must have a keybinding, so it needs no command palette");
@@ -115,10 +147,12 @@ if (process.platform !== "win32") {
   check(calls().length === 1 && /--install-extension .*--force/.test(calls()[0]),
         "a first install should call code --install-extension --force");
 
-  // Pretend VS Code unpacked it: the vsix's extension/ subtree becomes the root.
-  const unpacked = path.join(extDir, `${pkg.publisher}.${pkg.name}-${pkg.version}`);
+  // Pretend VS Code unpacked it: the vsix's extension/ subtree becomes the
+  // root, and package.json gains a "__metadata" object -- a real install does
+  // both, and a byte comparison of the manifest never matched because of it.
+  const unpacked = path.join(extDir, `${pkg.publisher}.${pkg.name}-${v1}`);
   execFileSync("python3", ["-c", [
-    "import zipfile, pathlib",
+    "import zipfile, pathlib, json",
     `z = zipfile.ZipFile(${JSON.stringify(vsix)})`,
     `root = pathlib.Path(${JSON.stringify(unpacked)})`,
     "for m in z.namelist():",
@@ -126,6 +160,9 @@ if (process.platform !== "win32") {
     "        dest = root / m[len('extension/'):]",
     "        dest.parent.mkdir(parents=True, exist_ok=True)",
     "        dest.write_bytes(z.read(m))",
+    "p = root / 'package.json'; d = json.loads(p.read_text())",
+    "d['__metadata'] = {'installedTimestamp': 1788619298564, 'targetPlatform': 'undefined', 'size': 63834}",
+    "p.write_text(json.dumps(d, indent=2) + '\\n')",
   ].join("\n")]);
 
   out = install();
@@ -133,9 +170,16 @@ if (process.platform !== "win32") {
         "reinstalling an identical copy must not touch VS Code: it invalidates a running window");
   check(/up to date/.test(out), "an identical copy should be reported as up to date");
 
+  // VS Code keeps a superseded folder around, listed in .obsolete, until a
+  // later start removes it. Identical content there is not "installed".
+  fs.writeFileSync(path.join(extDir, ".obsolete"), JSON.stringify({ [path.basename(unpacked)]: true }));
+  out = install();
+  check(calls().length === 2, "a folder listed in .obsolete must not count as installed");
+  fs.unlinkSync(path.join(extDir, ".obsolete"));
+
   fs.appendFileSync(path.join(unpacked, "extension.js"), "\n// stale\n");
   out = install();
-  check(calls().length === 2, "a changed copy must be reinstalled");
+  check(calls().length === 3, "a changed copy must be reinstalled");
   check(/Reload Window/.test(out),
         "replacing a copy a window may have loaded must say how to reload");
 
