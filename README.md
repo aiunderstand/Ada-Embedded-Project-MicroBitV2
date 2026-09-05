@@ -88,5 +88,8 @@ closing the folder.
 
 ## This template uses
 
-Ada Language Server, EditorConfig, Cortex-Debug, CPPtools, VS Code Serial
-Monitor, and [Alire](https://alire.ada.dev/) for the toolchain.
+Two extensions: the Ada language server (**AdaCore.ada**) and the micro:bit
+flasher (**AIUnderstand.microbit-flasher**), which a Codespace installs into
+your browser by itself. Locally, Cortex-Debug is offered the first time you
+press F5. [Alire](https://alire.ada.dev/) supplies the toolchain.
+

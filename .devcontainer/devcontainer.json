@@ -66,13 +66,10 @@
                 // The flasher itself must never be listed here: a web extension
                 // installed into the container cannot start in the browser.
                 "AIUnderstand.microbit-companion",
-                "AdaCore.ada",
-                "EditorConfig.EditorConfig",
-                "ms-vscode.cpptools",
-                "ms-vscode.vscode-serial-monitor",
-                "awsxxf.serialterminal",
-                "mcu-debug.debug-tracker-vscode",
-                "marus25.cortex-debug"
+                // The Ada language server. It is an extension pack and brings
+                // C/C++, SARIF Viewer and Live Preview with it; that is AdaCore's
+                // choice, not something this file can undo.
+                "AdaCore.ada"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",

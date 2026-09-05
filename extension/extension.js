@@ -68,12 +68,34 @@ function serialReceived(data) {
   }
 }
 
+const SERIAL_CHAR_GAP_MS = 10;
+let serialQueue = Promise.resolve();
+
+/**
+ * Send to the board one character at a time, a few milliseconds apart.
+ *
+ * There is no flow control between DAPLink and the nRF52, and the board's
+ * UART driver polls a FIFO of a few bytes. A whole line arrives in under a
+ * millisecond at 115200 baud; a program that prints something per character
+ * cannot keep up, and the first real session ended with the program wedged
+ * after two characters of "hello". Keystrokes from a terminal never came that
+ * fast, which is why the earlier console looked fine.
+ */
 function serialSend(text) {
   if (!connection) {
     log("serial: not connected, nothing sent");
-    return;
+    return Promise.resolve();
   }
-  connection.serialWrite(text).catch((err) => log(`serial write failed: ${err.message}`));
+  const usb = connection;
+  serialQueue = serialQueue
+    .then(async () => {
+      for (const ch of text) {
+        await usb.serialWrite(ch);
+        await new Promise((resolve) => setTimeout(resolve, SERIAL_CHAR_GAP_MS));
+      }
+    })
+    .catch((err) => log(`serial write failed: ${err.message}`));
+  return serialQueue;
 }
 
 /** Show the console. The first time this resolves the view; never steals focus after that. */

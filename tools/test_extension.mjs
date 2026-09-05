@@ -186,7 +186,12 @@ check(posted[posted.length - 1].text === "a\n", "live output is posted to the vi
 let disconnected = 0;
 mod.exports._serial.setConnection({ serialWrite: async (t) => { sentToBoard.push(t); }, disconnect: async () => { disconnected++; } });
 onMessage({ type: "send", text: "hi" });
+await new Promise((r) => setTimeout(r, 120));
 check(sentToBoard.join("") === "hi\r\n", "Send transmits the line with CR LF");
+// A whole line at once overran the board's UART FIFO and wedged a Get loop
+// after two characters; the board has no flow control, so the sender paces.
+check(sentToBoard.length === 4 && sentToBoard.every((c) => c.length === 1),
+      "characters must go out one at a time, so the board's UART is never overrun");
 executed.length = 0;
 await handlers["microbit.disconnect"]();
 check(disconnected === 1, "Disconnect closes the connection");
