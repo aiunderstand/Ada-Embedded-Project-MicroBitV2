@@ -67,20 +67,19 @@ No download, no file to drag.
 > because it is a VS Code **web extension**: VS Code runs it in your
 > *browser*, on your own laptop, where the board is actually plugged in.
 
-**Once per Codespace, install the flasher in your browser.** When the
-Codespace opens, VS Code asks whether to install the recommended extensions —
-click **Install**; the flasher is one of them. Missed the prompt? Open the
-Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), type
-`AIUnderstand.microbit-flasher` in its search box, and click **Install** on
-*micro:bit v2 Flasher*.
+**The flasher installs itself into your browser** the first time the Codespace
+opens — a small companion extension inside the Codespace asks VS Code to do it,
+and a message says so. Give it a minute; **Flash micro:bit** then sits at the
+bottom-left of the window.
 
-> Why is this one not installed for you like the Ada extension? Those run
-> *inside* the Codespace; the flasher has to run in your **browser**, where
-> the USB port is, and only you can put it there. To stop repeating this in
-> every new Codespace, turn on **Settings Sync** once (the gear at the bottom
-> left → *Sign in to Sync Settings*): your browser extensions then follow you.
-**Flash micro:bit** appears in the status bar a few seconds later. (If VS Code
-offers a choice, pick *Install in Browser*: the Codespace itself cannot run it.)
+If it never appears: run `micro:bit: Install the flasher in this browser` from
+the command palette (**Ctrl+Shift+P**, **Cmd+Shift+P** on a Mac). Failing that,
+open the Extensions view (**Ctrl+Shift+X**), type `AIUnderstand.microbit-flasher`
+in its search box, and click **Install** on *micro:bit v2 Flasher*.
+
+> Why does this one need help when the Ada extension just appears? Those run
+> *inside* the Codespace; the flasher has to run in your **browser**, where the
+> USB port is, and only something already running in VS Code can put it there.
 
 Then, every time:
 

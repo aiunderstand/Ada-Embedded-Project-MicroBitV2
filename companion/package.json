@@ -1,0 +1,30 @@
+{
+  "name": "microbit-companion",
+  "displayName": "micro:bit Companion (Codespaces)",
+  "description": "Runs inside the Codespace and installs the micro:bit v2 Flasher into your browser, where it has to live",
+  "version": "0.1.0",
+  "publisher": "AIUnderstand",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2.git"
+  },
+  "homepage": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2#readme",
+  "keywords": ["micro:bit", "microbit", "codespaces", "ada"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "microbit.companion.install",
+        "title": "micro:bit: Install the flasher in this browser",
+        "category": "micro:bit"
+      }
+    ]
+  }
+}

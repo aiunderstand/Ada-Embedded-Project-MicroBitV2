@@ -62,6 +62,10 @@
     "customizations": {
         "vscode": {
             "extensions": [
+                // Installs the flasher into the student's browser on startup.
+                // The flasher itself must never be listed here: a web extension
+                // installed into the container cannot start in the browser.
+                "AIUnderstand.microbit-companion",
                 "AdaCore.ada",
                 "EditorConfig.EditorConfig",
                 "ms-vscode.cpptools",

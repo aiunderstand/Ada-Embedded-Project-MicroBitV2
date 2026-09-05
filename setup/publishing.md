@@ -20,11 +20,21 @@ a one-time setup, then one click per release.
 3. **Repository secret.** In this repository: Settings → Secrets and variables →
    Actions → *New repository secret*: name `VSCE_PAT`, value the token.
 
+## Two extensions
+
+`AIUnderstand.microbit-flasher` is the web extension students use. Nothing in a
+repository can install it into a browser, so `AIUnderstand.microbit-companion`
+exists: a plain Node extension, listed in `devcontainer.json` like the Ada
+extension, which on startup asks the workbench to install the flasher — and
+the workbench puts a web-only extension in the browser. Publish both; the
+companion changes rarely.
+
 ## Each release
 
-Either upload by hand — `python3 tools/mb.py extension --out build/extension`,
-then `cd build/extension && npx @vscode/vsce package --no-dependencies`, bump
-`version` in `extension/package.json` first (these are the `0.1.x` releases) —
+Either upload by hand — `python3 tools/mb.py extension --out build/extension`
+(or `companion`), then `cd build/extension && npx @vscode/vsce package
+--no-dependencies`, bump `version` in `extension/package.json` (or
+`companion/package.json`) first (these are the `0.1.x` releases) —
 or let the workflow do it: Actions → **Publish the flasher extension** → *Run
 workflow*. It assembles the folder, packages it with `vsce`, uploads the
 `.vsix` as an artifact, and publishes `0.2.<run number>`. The Marketplace needs

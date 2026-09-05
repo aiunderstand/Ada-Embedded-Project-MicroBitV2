@@ -17,9 +17,10 @@ low-maintenance option over the clever one.
 Code/src/main.adb                 the student's program -- the file they edit
 Code/itrs.gpr                     the template project
 Code/libs/Ada_Drivers_Library     git submodule -> aiunderstand/Ada_Drivers_Library (a fork we own)
-tools/mb.py                       the one driver: build / flash / prove / serve / setup / extension
+tools/mb.py                       the one driver: build / flash / prove / serve / setup / extension / companion
 docs/                             the GitHub Pages flasher (index.html + app.mjs + vendor/)
-extension/                        VS Code *web* extension: flashing from a Codespace
+extension/                        VS Code *web* extension: flashing from a Codespace (runs in the browser)
+companion/                        its Codespace-side helper: installs the flasher into the browser
 setup/                            per-path student guides
 ```
 
@@ -161,11 +162,16 @@ A Codespace has **no USB**. Three consequences:
    device and the view only shows and asks.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
-   Listed in `.vscode/extensions.json` so VS Code offers it; never in
-   `devcontainer.json`, which installs into the container. Nothing in a repo
-   can put it into a student's browser silently: Settings Sync is off by
-   default in the Codespaces web client, so the recommendation prompt (one
-   click per Codespace) is the floor. The USB picker only appears within a few
+   Never listed in `devcontainer.json`, which installs into the container.
+   Nothing in a repository can put it into a student's browser -- except an
+   extension already running: `companion/` is a plain Node extension, listed
+   in `devcontainer.json`, that on startup runs
+   `workbench.extensions.installExtension` for the flasher, and the workbench
+   installs a web-only extension in the browser (the same path as clicking
+   Install). `.vscode/extensions.json` recommends the flasher as well.
+   Settings Sync is off by default in the Codespaces web client, so without
+   the companion the recommendation prompt is the floor. The USB picker only
+   appears within a few
    seconds of a user gesture, so `cmdFlash` asks for the device *before* it
    builds, and Connect/Disconnect/Flash are native view-header buttons rather
    than buttons inside the webview.

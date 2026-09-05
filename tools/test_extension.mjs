@@ -276,9 +276,61 @@ check(fs.existsSync(path.join(root, ".github/workflows/publish-extension.yml")),
       "a publishing workflow must exist");
 
 fs.rmSync(out, { recursive: true, force: true });
+
+// ------------------------------------------------------------ the companion
+// A web extension cannot be installed into a student's browser by anything in
+// a repository -- except an extension already running in the container that
+// asks the workbench to. That is the companion: a plain Node extension,
+// listed in devcontainer.json, which installs the flasher on startup.
+const cout = fs.mkdtempSync(path.join(os.tmpdir(), "companion-"));
+execFileSync("python3", ["tools/mb.py", "companion", "--out", cout], { cwd: root, stdio: "pipe" });
+const cpkg = JSON.parse(fs.readFileSync(path.join(cout, "package.json"), "utf8"));
+check(cpkg.publisher === "AIUnderstand" && cpkg.name === "microbit-companion", "companion identity");
+check(cpkg.main && !cpkg.browser, "the companion is a Node extension: it must run in the container");
+check(Array.isArray(cpkg.extensionKind) && cpkg.extensionKind[0] === "workspace",
+      "extensionKind workspace, so a Codespace runs it in the container");
+check((cpkg.activationEvents || []).includes("onStartupFinished"), "the companion runs at startup");
+check(/AIUnderstand\.microbit-companion/.test(devcontainer) && !/microbit-flasher/.test(devcontainer.replace(/\/\/.*$/gm, "")),
+      "devcontainer.json must list the companion and never the flasher");
+const csrc = fs.readFileSync(path.join(cout, "extension.js"), "utf8");
+async function runCompanion({ uiKind, present, force = false }) {
+  const executed = [], messages = [];
+  const state = {};
+  let handler;
+  const vs = {
+    env: { uiKind, openExternal() {} }, UIKind: { Web: 2, Desktop: 1 },
+    Uri: { parse: (u) => u },
+    extensions: { getExtension: () => (present ? { id: "AIUnderstand.microbit-flasher" } : undefined) },
+    commands: { registerCommand: (id, fn) => { handler = fn; return { dispose() {} }; },
+                executeCommand: async (...a) => { executed.push(a.join(" ")); } },
+    window: { showInformationMessage: async (m) => { messages.push(m); }, showWarningMessage: async () => undefined },
+  };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", csrc)((n) => vs, m, m.exports);
+  const ctx = { subscriptions: [], globalState: { get: (k) => state[k], update: async (k, v) => { state[k] = v; } } };
+  const result = await m.exports.activate(ctx);
+  if (force) await handler();
+  return { result, executed, messages, state };
+}
+const fresh = await runCompanion({ uiKind: 2, present: false });
+check(fresh.executed.includes("workbench.extensions.installExtension AIUnderstand.microbit-flasher"),
+      "in the browser, with no flasher, the companion asks the workbench to install it");
+check(fresh.result === "installed" && fresh.state["microbit.flasherInstalled"] === true,
+      "a successful install is remembered, so it is not repeated on every attach");
+check(fresh.messages.some((m) => /Ctrl\+Alt\+F/.test(m)), "and the student is told what to do next");
+const already = await runCompanion({ uiKind: 2, present: true });
+check(already.result === "present" && !already.executed.some((e) => /installExtension/.test(e)),
+      "with the flasher present, nothing is installed");
+const desktop = await runCompanion({ uiKind: 1, present: false });
+check(desktop.result === "desktop" && !desktop.executed.some((e) => /installExtension/.test(e)),
+      "desktop VS Code has no WebUSB: the companion does nothing there");
+const forcedRun = await runCompanion({ uiKind: 2, present: true, force: true });
+check(forcedRun.executed.some((e) => /installExtension/.test(e)), "the command installs even when a copy is present");
+fs.rmSync(cout, { recursive: true, force: true });
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  extension: folder, manifest, keybinding, worker-safe bundle, activation, delivery wiring");
+console.log("PASS  extension: folder, manifest, keybinding, worker-safe bundle, activation, delivery wiring, companion");
