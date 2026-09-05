@@ -162,6 +162,8 @@ jobs:
       # "Choose project..." must stick: a plain build (what Ctrl+Alt+F runs)
       # rebuilds the chosen example, and choosing the template returns.
       - name: A chosen project is remembered by the next plain build
+        # Inside the container the default shell is sh, which has no pipefail.
+        shell: bash
         run: |
           set -euo pipefail
           python3 tools/mb.py build --use ravenscar/buttons
