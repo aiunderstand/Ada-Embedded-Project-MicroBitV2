@@ -28,8 +28,11 @@ check(pkg.publisher === "aiunderstand", "publisher must be aiunderstand");
 check(pkg.name === "microbit-flasher", "name must be microbit-flasher");
 check(pkg.browser && !pkg.main,
       "a browser entry and no main: the only host with USB is the browser's");
-check(pkg.repository && /aiunderstand\/Ada-Embedded-Project-MicroBitV2/.test(pkg.repository.url),
-      "repository must point at this repo (vsce warns without it)");
+// A GitHub URL, not this repository's name: the template-hygiene lint rightly
+// refuses any path that bakes in the upstream name, and vsce only needs a
+// repository to fill the Marketplace links from.
+check(pkg.repository && /^https:\/\/github\.com\/[^/]+\/[^/]+\.git$/.test(pkg.repository.url),
+      "repository must be a GitHub URL (vsce fills the Marketplace links from it)");
 check(!("private" in pkg), "no 'private' flag: it is published");
 check(pkg.version === srcPkg.version, "without --version the source version is used");
 const forced = fs.mkdtempSync(path.join(os.tmpdir(), "ext-v-"));
