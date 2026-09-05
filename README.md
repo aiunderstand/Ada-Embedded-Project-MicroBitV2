@@ -88,4 +88,8 @@ closing the folder.
 
 ## This template uses
 
-Two extensions do the work: the Ada language server (AdaCore.ada) and the micro:bit flasher (AIUnderstand.microbit-flasher), which a Codespace installs into your browser by itself; locally, Cortex-Debug is offered the first time you press F5.ada.dev/) for the toolchain.
+Two extensions: the Ada language server (**AdaCore.ada**) and the micro:bit
+flasher (**AIUnderstand.microbit-flasher**), which a Codespace installs into
+your browser by itself. Locally, Cortex-Debug is offered the first time you
+press F5. [Alire](https://alire.ada.dev/) supplies the toolchain.
+
