@@ -21,7 +21,7 @@ Everything below assumes you are working in *your* repository, not this one.
 | | Path | You install | Flashing | Debugging (F5) |
 |---|---|---|---|---|
 | 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | no |
-| 🔵 | **[On your own machine](setup/local.md)** | Python + Git, then one command | plugged in, or browser | **yes** |
+| 🔵 | **[On your own machine](setup/local.md)** | VS Code + Python, then one command | plugged in, or browser | **yes** |
 
 **Not sure?** Start with the browser. It needs nothing installed, works on a
 school laptop or a Chromebook, and you can move to a local install later without
