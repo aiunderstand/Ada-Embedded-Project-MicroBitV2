@@ -117,6 +117,21 @@ remain and the pull is unchanged — the image merely *looks* smaller.
 **`git status` always exits 0.** Cleanliness guards must be
 `test -z "$(git status --porcelain -uall)"`.
 
+**Check a new keybinding against VS Code's defaults, per platform.** The
+extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
+as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
+as you typed it finds nothing. Read the real tables out of a running VS Code:
+`Preferences: Open Default Keyboard Shortcuts (JSON)`, or the `verify-ui` skill's
+test-web recipe with a spoofed user agent for Windows and Linux.
+
+**VS Code will not hot-swap a running extension.** `canRemoveExtension` is
+false once activation has started, so reinstalling the same version into a
+live window leaves it with a stale mix -- the new manifest's keybinding, no
+command handler: `command 'microbit.flash' not found`. `postAttachCommand`
+runs on *every* attach, so `mb.py extension --install` compares the installed
+copy byte-for-byte and touches nothing when it is identical; when it does
+replace one it says to run `Developer: Reload Window`.
+
 ## Codespaces
 
 A Codespace has **no USB**. Three consequences:

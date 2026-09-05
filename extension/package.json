@@ -37,8 +37,7 @@
     "keybindings": [
       {
         "command": "microbit.flash",
-        "key": "ctrl+alt+f",
-        "mac": "cmd+alt+f"
+        "key": "ctrl+alt+f"
       }
     ]
   }

@@ -71,7 +71,7 @@ The extension is built and installed automatically when the Codespace starts.
 
 1. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
 2. Click **Flash micro:bit** in the status bar, at the bottom of the window.
-   (Or press **Ctrl+Alt+F** — **Cmd+Alt+F** on a Mac.)
+   (Or press **Ctrl+Alt+F** — on a Mac that is **Control+Option+F**, not Command.)
 3. The first time only, your browser asks which device to use — choose the
    micro:bit.
 
@@ -131,3 +131,7 @@ Restricted Mode, which disables the build tasks.
 **The flasher says no devices found.** Use a data cable, not a charge-only one,
 and use Chrome, Edge or Opera. On Linux see the note on the flasher page about
 the udev rule.
+
+**Ctrl+Alt+F says `command 'microbit.flash' not found`.** The flasher extension
+was updated while this window was open, and VS Code keeps the old one until you
+reload: press **Ctrl+Shift+P**, type `Reload Window`, and run it.

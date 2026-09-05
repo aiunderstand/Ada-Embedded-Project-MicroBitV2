@@ -596,6 +596,7 @@ def cmd_extension(args) -> int:
     """
     import zipfile
 
+    pkg_text = (EXTENSION_DIR / "package.json").read_text()
     pkg = json_load(EXTENSION_DIR / "package.json")
     name, version, publisher = pkg["name"], pkg["version"], pkg["publisher"]
 
@@ -647,7 +648,7 @@ def cmd_extension(args) -> int:
     with zipfile.ZipFile(vsix, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("extension.vsixmanifest", manifest)
         z.writestr("[Content_Types].xml", content_types)
-        z.writestr("extension/package.json", (EXTENSION_DIR / "package.json").read_text())
+        z.writestr("extension/package.json", pkg_text)
         z.writestr("extension/extension.js", bundled)
         readme = EXTENSION_DIR / "README.md"
         if readme.is_file():
@@ -660,10 +661,63 @@ def cmd_extension(args) -> int:
             print("  'code' command not found -- install it by hand with:")
             print(f"    code --install-extension {rel(vsix)} --force")
             return 1
+        # This runs on every Codespace attach. VS Code will not swap out an
+        # extension whose activation has started, so reinstalling the same
+        # version into a running window leaves it with a stale mix of manifest
+        # and code ("command 'microbit.flash' not found"), and the reinstall
+        # also deletes and re-extracts the folder the running window loads
+        # from. So: touch nothing when the installed copy is already identical,
+        # and say clearly when a reload is actually needed.
+        installed = _installed_extension_dir(publisher, name)
+        if installed and _installed_matches(installed, bundled, pkg_text):
+            info(f"already installed and up to date ({rel(installed)})")
+            return 0
         if run([code_cli, "--install-extension", str(vsix), "--force"]) != 0:
             die("installing the extension failed")
-        info("installed. Reload the window to activate it.")
+        if installed:
+            print("  updated an extension that was already loaded. VS Code keeps the")
+            print("  old one running until the window is reloaded:")
+            print("    Ctrl+Shift+P  >  Developer: Reload Window")
+        else:
+            info("installed. If 'Flash micro:bit' is not in the status bar, reload "
+                 "the window: Ctrl+Shift+P > Developer: Reload Window")
     return 0
+
+
+def _installed_extension_dir(publisher: str, name: str) -> Path | None:
+    """The folder VS Code unpacked our extension into, if it is installed here.
+
+    VS Code honours VSCODE_EXTENSIONS as its extensions directory; otherwise the
+    server in a Codespace uses ~/.vscode-remote, Remote-SSH and dev containers
+    use ~/.vscode-server, and the desktop uses ~/.vscode.
+    """
+    roots = [Path(p) for p in os.environ.get("VSCODE_EXTENSIONS", "").split(os.pathsep) if p]
+    roots += [Path.home() / d for d in (".vscode-remote/extensions",
+                                        ".vscode-server/extensions",
+                                        ".vscode/extensions",
+                                        ".vscode-insiders/extensions")]
+    prefix = f"{publisher}.{name}-".lower()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        found = sorted(d for d in root.iterdir()
+                       if d.is_dir() and d.name.lower().startswith(prefix))
+        if found:
+            return found[-1]
+    return None
+
+
+def _installed_matches(installed: Path, bundled: str, pkg_text: str) -> bool:
+    """Byte-for-byte: is what VS Code has on disk what we would install?
+
+    VS Code unpacks the vsix's extension/ subtree as the extension root, so the
+    installed layout is <dir>/package.json, not <dir>/extension/package.json.
+    """
+    try:
+        return ((installed / "extension.js").read_bytes() == bundled.encode()
+                and (installed / "package.json").read_bytes() == pkg_text.encode())
+    except OSError:
+        return False
 
 
 def json_load(path: Path):
