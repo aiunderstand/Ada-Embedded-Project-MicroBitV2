@@ -1,12 +1,13 @@
 {
     "recommendations": [
+        "AIUnderstand.microbit-flasher",
         "AdaCore.ada",
         "EditorConfig.EditorConfig",
         "mcu-debug.debug-tracker-vscode",
         "marus25.cortex-debug",
         "ms-vscode.cpptools",
-        "ms-vscode.vscode-serial-monitor", 
-        "awsxxf.serialterminal", 
+        "ms-vscode.vscode-serial-monitor",
+        "awsxxf.serialterminal",
         "eclipse-cdt.serial-monitor"
     ]
 }

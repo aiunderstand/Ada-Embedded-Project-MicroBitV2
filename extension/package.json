@@ -2,7 +2,7 @@
   "name": "microbit-flasher",
   "displayName": "micro:bit v2 Flasher",
   "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
@@ -56,6 +56,26 @@
         "command": "microbit.flash",
         "key": "ctrl+alt+f"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "microbit",
+          "title": "micro:bit",
+          "icon": "$(circuit-board)"
+        }
+      ]
+    },
+    "views": {
+      "microbit": [
+        {
+          "type": "webview",
+          "id": "microbitSerial",
+          "name": "Serial",
+          "icon": "$(circuit-board)",
+          "contextualTitle": "micro:bit serial"
+        }
+      ]
+    }
   }
 }

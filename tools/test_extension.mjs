@@ -85,19 +85,29 @@ check(src.includes('"workbench.action.tasks.runTask"'),
 
 check((pkg.contributes.commands || []).some((c) => c.command === "microbit.serial"),
       "a command must open the serial console");
+const views = Object.values(pkg.contributes.views || {}).flat();
+check(views.some((v) => v.id === "microbitSerial" && v.type === "webview"),
+      "the serial console is a webview view (input field, Send, Clear), not just an output channel");
+check(Object.keys(pkg.contributes.viewsContainers || {}).includes("panel"),
+      "the console lives in the bottom panel, next to Terminal and Output");
+// A web extension cannot be listed for the container (#144513), but it can be
+// a workspace recommendation, which VS Code offers to install on the browser side.
+const recs = JSON.parse(fs.readFileSync(path.join(root, ".vscode/extensions.json"), "utf8")).recommendations;
+check(recs.includes("AIUnderstand.microbit-flasher"), ".vscode/extensions.json must recommend the flasher");
 
 // Load it exactly as the worker host would: no window, no document.
 const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };
 const bar = { show() {}, dispose() {}, set text(_v) {}, get text() { return ""; } };
 class EventEmitter { constructor() { this.listeners = []; this.event = (fn) => { this.listeners.push(fn); return { dispose() {} }; }; } fire(v) { for (const fn of this.listeners) fn(v); } }
-const terminals = [];
+const providers = {};
+const executed = [];
 const vscode = {
   EventEmitter,
   window: { createOutputChannel: () => chan, createStatusBarItem: () => bar,
             showErrorMessage() {}, showInformationMessage() {},
             withProgress: async (_o, f) => f({ report() {} }),
-            createTerminal: (opts) => { const t = { opts, shown: [], show(p) { this.shown.push(p); } }; terminals.push(t); return t; } },
-  commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async () => {} },
+            registerWebviewViewProvider: (id, provider) => { providers[id] = provider; return { dispose() {} }; } },
+  commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async (id) => { executed.push(id); } },
   tasks: { fetchTasks: async () => [], onDidEndTaskProcess: () => ({ dispose() {} }) },
   StatusBarAlignment: { Left: 1 }, ProgressLocation: { Notification: 15 },
   Uri: { joinPath: () => ({}) },
@@ -121,35 +131,54 @@ check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
 
 // ---------------------------------------------------------- serial console
-// The board's UART arrives as serialdata events; the console is a
-// pseudoterminal. Bytes that arrive before it is open must not be lost, LF
-// must become CR LF for xterm, typing must be echoed (Get does not echo) and
-// sent with CR LF on Enter, and the console must never take focus, or the
-// next Ctrl+Alt+F would type into it instead of flashing.
-const written = [];
-mod.exports._serial.received("boot line\n");                 // before any console
+// The board's UART arrives as serialdata events; the console is a webview view
+// with an input field, Send and Clear. Bytes that arrive before the view exists
+// must be replayed into it, Enter must send CR LF, Clear must forget the
+// backlog, and showing the view again must not steal focus from the editor.
+check(providers.microbitSerial, "activate() must register the serial view provider");
+const posted = [], sentToBoard = [];
+let onMessage = null, onDispose = null, html = "";
+const fakeView = {
+  webview: { cspSource: "vscode-webview://x", options: null,
+             set html(h) { html = h; }, get html() { return html; },
+             postMessage(m) { posted.push(m); },
+             onDidReceiveMessage(cb) { onMessage = cb; return { dispose() {} }; } },
+  onDidDispose(cb) { onDispose = cb; return { dispose() {} }; },
+  shown: [], show(p) { this.shown.push(p); },
+};
+mod.exports._serial.received("boot line\n");                 // before the view exists
 mod.exports._serial.open();
-check(terminals.length === 1 && terminals[0].opts.name === "micro:bit serial",
-      "opening the console creates a pseudoterminal named micro:bit serial");
-const t0 = terminals[0];
-check(t0.shown[0] === true, "the console must be shown with preserveFocus, so the chord keeps working");
-t0.opts.pty.onDidWrite((d) => written.push(d));
-t0.opts.pty.open();
-check(written.join("") === "boot line\r\n", "output that arrived before the console opened is replayed, LF as CR LF");
-mod.exports._serial.received("a\r\nb\n");
-check(written.join("") === "boot line\r\na\r\nb\r\n", "CR LF is passed through, bare LF becomes CR LF");
-mod.exports._serial.received("\n--- program restarted ---\n");
-check(/restarted/.test(written.join("")), "a reset shows a divider in the console");
-written.length = 0;
-t0.opts.pty.handleInput("x\r");
-check(written.join("") === "x\r\n", "typing is echoed, Enter as CR LF");
-t0.opts.pty.handleInput("\x1b[A");
-check(written.join("") === "x\r\n", "escape sequences are dropped, not echoed or sent");
+check(executed.includes("microbitSerial.focus"), "opening the console before it exists focuses the view, which resolves it");
+providers.microbitSerial.resolveWebviewView(fakeView);
+check(fakeView.webview.options && fakeView.webview.options.enableScripts === true, "the view needs scripts");
+check(/<input[^>]*id="in"/.test(html) && /id="send"/.test(html) && /id="clear"/.test(html),
+      "the console has an input field, a Send button and a Clear button");
+check(/Content-Security-Policy[^>]*script-src 'nonce-[0-9a-f]+'/.test(html), "scripts run only with the nonce");
+onMessage({ type: "ready" });
+check(posted.length === 1 && posted[0].text === "boot line\n", "output from before the view existed is replayed on ready");
+mod.exports._serial.received("a\n");
+check(posted[posted.length - 1].text === "a\n", "live output is posted to the view");
+mod.exports._serial.setConnection({ serialWrite: async (t) => { sentToBoard.push(t); } });
+onMessage({ type: "send", text: "hi" });
+check(sentToBoard.join("") === "hi\r\n", "Send transmits the line with CR LF");
+onMessage({ type: "clear" });
+posted.length = 0;
+onMessage({ type: "ready" });
+check(posted.length === 0, "after Clear, a re-created view starts empty");
 mod.exports._serial.open();
-check(terminals.length === 1 && t0.shown.length === 2, "opening again brings the same console forward");
-t0.opts.pty.close();
+check(fakeView.shown[0] === true, "showing the console again must preserve focus, so the chord keeps working");
+onDispose();
+mod.exports._serial.received("later\n");
+posted.length = 0;
+executed.length = 0;
 mod.exports._serial.open();
-check(terminals.length === 2, "after the student closes it, the next open creates a fresh console");
+check(executed.includes("microbitSerial.focus"), "after the view is disposed, opening resolves a new one");
+
+// The picker only appears while the keypress is still a fresh user gesture,
+// and a full build outlasts it: the device must be asked for before building.
+const flashBody = src.slice(src.indexOf("async function cmdFlash"), src.indexOf("async function cmdStatus"));
+check(flashBody.indexOf("ensureConnected()") < flashBody.indexOf("runBuildTask()"),
+      "cmdFlash must connect (and show the picker) before it builds");
 
 // ------------------------------------------------------ the flash, in a worker
 // A worker's navigator.usb has getDevices() but no requestDevice(). The first

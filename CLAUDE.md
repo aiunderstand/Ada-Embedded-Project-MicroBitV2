@@ -156,10 +156,16 @@ A Codespace has **no USB**. Three consequences:
    Device authorisation uses `workbench.experimental.requestUsbDevice`, filtered
    to vendor `0x0d28`.
 3. A **VS Code webview cannot do this**: webview iframes are not granted
-   `allow="usb"`. Rendering-only integrations (e.g. Surfer) work in a webview;
-   device access does not.
+   `allow="usb"`. Rendering-only integrations work in a webview; device access
+   does not. The serial console *is* a webview view — the extension holds the
+   device and the view only shows and asks.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
+   Listed in `.vscode/extensions.json` so VS Code offers it; never in
+   `devcontainer.json`, which installs into the container. The USB picker only
+   appears within a few seconds of the keypress, so `cmdFlash` asks for the
+   device *before* it builds.
+
    `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
    above). `setup/publishing.md` is the lecturer's publishing procedure.
 

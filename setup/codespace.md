@@ -85,12 +85,13 @@ Then, every time:
 That one action **builds and flashes**. You do not need to build first, and it
 can never flash yesterday's firmware by mistake.
 
-After the flash, a **micro:bit serial** terminal opens next to your normal
-terminal: everything your program `Put_Line`s appears there, over the same USB
-connection. Click into it and type to send characters to your program —
-`MicroBit.Console.Get` receives them one at a time, and Enter sends CR LF, the
-same line ending `Put_Line` writes. Closed it? Run `micro:bit: Open serial
-console` from the command palette.
+After the flash, a **micro:bit › Serial** view opens in the bottom panel, next
+to *Terminal*: everything your program `Put_Line`s appears there, over the same
+USB connection. Type a line in the field at the bottom and press **Enter** (or
+**Send**) to send it to your program — `MicroBit.Console.Get` receives it one
+character at a time, ending in CR LF, the same line ending `Put_Line` writes.
+**Clear** empties the view. Closed it? Run `micro:bit: Open serial console`
+from the command palette.
 
 A progress notification shows the flash, and `Put_Line` output appears in the
 **micro:bit** output channel. After the first time, the board reconnects by
@@ -152,6 +153,10 @@ Codespace* instead of in your browser, and there it can never start — a
 long-standing VS Code limitation, not something you did. In the Extensions
 view, find *micro:bit v2 Flasher*; if it says it is installed in the Codespace,
 uninstall it there and use **Install in Browser** instead.
+
+**The first flash says "Must be handling a user gesture".** The browser shows
+the USB picker only right after your keypress. Press Ctrl+Alt+F again; the
+board is asked for first, before the build, and once chosen it is remembered.
 
 **Flash micro:bit never appears after installing.** Use Chrome, Edge or Opera —
 Safari and Firefox have no WebUSB. Then check *Show Running Extensions* in the
