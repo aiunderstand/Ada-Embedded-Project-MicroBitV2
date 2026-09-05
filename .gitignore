@@ -15,3 +15,7 @@ build/
 
 # Alire workspace state (alire.toml IS committed; this directory is not)
 /alire/
+
+# Python bytecode
+__pycache__/
+*.pyc
