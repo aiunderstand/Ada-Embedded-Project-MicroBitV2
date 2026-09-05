@@ -67,10 +67,18 @@ No download, no file to drag.
 > because it is a VS Code **web extension**: VS Code runs it in your
 > *browser*, on your own laptop, where the board is actually plugged in.
 
-**Once per Codespace, install the flasher in your browser.** Open the
+**Once per Codespace, install the flasher in your browser.** When the
+Codespace opens, VS Code asks whether to install the recommended extensions —
+click **Install**; the flasher is one of them. Missed the prompt? Open the
 Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), type
 `AIUnderstand.microbit-flasher` in its search box, and click **Install** on
 *micro:bit v2 Flasher*.
+
+> Why is this one not installed for you like the Ada extension? Those run
+> *inside* the Codespace; the flasher has to run in your **browser**, where
+> the USB port is, and only you can put it there. To stop repeating this in
+> every new Codespace, turn on **Settings Sync** once (the gear at the bottom
+> left → *Sign in to Sync Settings*): your browser extensions then follow you.
 **Flash micro:bit** appears in the status bar a few seconds later. (If VS Code
 offers a choice, pick *Install in Browser*: the Codespace itself cannot run it.)
 
@@ -90,8 +98,11 @@ to *Terminal*: everything your program `Put_Line`s appears there, over the same
 USB connection. Type a line in the field at the bottom and press **Enter** (or
 **Send**) to send it to your program — `MicroBit.Console.Get` receives it one
 character at a time, ending in CR LF, the same line ending `Put_Line` writes.
-**Clear** empties the view. Closed it? Run `micro:bit: Open serial console`
-from the command palette.
+**Clear** empties the view. Its header has three buttons: **plug** connects
+to the board, **⚡** builds and flashes (the same as Ctrl+Alt+F), and, once
+connected, **disconnect** lets go of the board — do that before using the
+board from another program or tab. Closed the view? Run `micro:bit: Open
+serial console` from the command palette.
 
 A progress notification shows the flash, and `Put_Line` output appears in the
 **micro:bit** output channel. After the first time, the board reconnects by

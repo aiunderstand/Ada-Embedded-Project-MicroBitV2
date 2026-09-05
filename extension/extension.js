@@ -35,6 +35,18 @@ function setStatus(text, busy) {
   status.show();
 }
 
+let connected = false;
+
+/** One place for "are we connected": the view's buttons, its status line, the status bar. */
+function setConnected(value) {
+  connected = value;
+  vscode.commands.executeCommand("setContext", "microbit.connected", value);
+  setStatus(value ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
+  if (serialView) {
+    serialView.webview.postMessage({ type: "status", connected: value });
+  }
+}
+
 // ---------------------------------------------------------------- serial
 //
 // The board's UART comes over the same authorised USB device: DAPLink bridges
@@ -92,6 +104,9 @@ function serialHtml(cspSource) {
   body { display: flex; flex-direction: column; font-family: var(--vscode-editor-font-family, monospace);
          font-size: var(--vscode-editor-font-size, 13px); color: var(--vscode-editor-foreground);
          background: var(--vscode-editor-background); }
+  #status { padding: 3px 8px; font-size: 90%; opacity: 0.8; border-bottom: 1px solid var(--vscode-panel-border, #444); }
+  #status.on::before { content: "\u25cf "; color: var(--vscode-testing-iconPassed, #3c3); }
+  #status.off::before { content: "\u25cb "; }
   #out { flex: 1; margin: 0; padding: 6px 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
   #out .sent { opacity: 0.6; }
   form { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--vscode-panel-border, #444); }
@@ -106,6 +121,7 @@ function serialHtml(cspSource) {
 </style>
 </head>
 <body>
+<div id="status" class="off">Not connected \u2014 press Ctrl+Alt+F, or Connect in this view's header</div>
 <pre id="out" aria-live="polite"></pre>
 <form id="form" autocomplete="off">
   <input id="in" type="text" placeholder="Type a line and press Enter to send it to the micro:bit" aria-label="Text to send">
@@ -130,6 +146,12 @@ function serialHtml(cspSource) {
     const m = e.data;
     if (m.type === "data") append(m.text);
     else if (m.type === "clear") out.textContent = "";
+    else if (m.type === "status") {
+      const el = document.getElementById("status");
+      el.className = m.connected ? "on" : "off";
+      el.textContent = m.connected ? "Connected to the micro:bit"
+        : "Not connected \u2014 press Ctrl+Alt+F, or Connect in this view's header";
+    }
   });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -159,6 +181,7 @@ const serialViewProvider = {
       if (m.type === "ready") {
         // A new view (first open, or re-created after the panel was closed)
         // starts from what has been received so far.
+        view.webview.postMessage({ type: "status", connected });
         if (serialBacklog) view.webview.postMessage({ type: "data", text: serialBacklog });
       } else if (m.type === "send") {
         // Enter sends CR LF, the terminator Put_Line itself writes, so a Get
@@ -261,7 +284,7 @@ async function ensureConnected() {
   usb.usbDevice = device;
   usb.addEventListener("status", ({ status: s }) => {
     log(`connection: ${s}`);
-    setStatus(s === "Connected" ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
+    setConnected(s === "Connected");
   });
   usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
   usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
@@ -275,13 +298,27 @@ async function cmdConnect() {
   try {
     setStatus("connecting", true);
     await ensureConnected();
-    log("Connected. Serial output is in the \"micro:bit serial\" terminal.");
+    log("Connected. Serial output is in the micro:bit Serial view.");
     openSerialConsole();
-    setStatus("Flash micro:bit (connected)", false);
+    setConnected(true);
   } catch (err) {
-    setStatus("Flash micro:bit", false);
+    setConnected(false);
     log(`Error: ${err.message}`);
     vscode.window.showErrorMessage(`micro:bit: ${err.message}`);
+  }
+}
+
+async function cmdDisconnect() {
+  const usb = connection;
+  connection = null;
+  setConnected(false);
+  if (usb) {
+    try {
+      await usb.disconnect();
+      log("Disconnected.");
+    } catch (err) {
+      log(`disconnect: ${err.message}`);
+    }
   }
 }
 
@@ -401,6 +438,7 @@ function activate(context) {
     output,
     status,
     vscode.commands.registerCommand("microbit.connect", cmdConnect),
+    vscode.commands.registerCommand("microbit.disconnect", cmdDisconnect),
     vscode.commands.registerCommand("microbit.flash", cmdFlash),
     vscode.commands.registerCommand("microbit.status", cmdStatus),
     vscode.commands.registerCommand("microbit.serial", openSerialConsole),

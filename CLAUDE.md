@@ -162,9 +162,13 @@ A Codespace has **no USB**. Three consequences:
 
 4. The extension must be **installed in the browser, from the Marketplace** —
    Listed in `.vscode/extensions.json` so VS Code offers it; never in
-   `devcontainer.json`, which installs into the container. The USB picker only
-   appears within a few seconds of the keypress, so `cmdFlash` asks for the
-   device *before* it builds.
+   `devcontainer.json`, which installs into the container. Nothing in a repo
+   can put it into a student's browser silently: Settings Sync is off by
+   default in the Codespaces web client, so the recommendation prompt (one
+   click per Codespace) is the floor. The USB picker only appears within a few
+   seconds of a user gesture, so `cmdFlash` asks for the device *before* it
+   builds, and Connect/Disconnect/Flash are native view-header buttons rather
+   than buttons inside the webview.
 
    `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
    above). `setup/publishing.md` is the lecturer's publishing procedure.

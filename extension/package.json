@@ -2,7 +2,7 @@
   "name": "microbit-flasher",
   "displayName": "micro:bit v2 Flasher",
   "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
@@ -33,12 +33,20 @@
       {
         "command": "microbit.connect",
         "title": "micro:bit: Connect board",
-        "category": "micro:bit"
+        "category": "micro:bit",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "microbit.disconnect",
+        "title": "micro:bit: Disconnect board",
+        "category": "micro:bit",
+        "icon": "$(debug-disconnect)"
       },
       {
         "command": "microbit.flash",
         "title": "micro:bit: Build and flash",
-        "category": "micro:bit"
+        "category": "micro:bit",
+        "icon": "$(zap)"
       },
       {
         "command": "microbit.status",
@@ -74,6 +82,25 @@
           "name": "Serial",
           "icon": "$(circuit-board)",
           "contextualTitle": "micro:bit serial"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "microbit.connect",
+          "when": "view == microbitSerial && !microbit.connected",
+          "group": "navigation@1"
+        },
+        {
+          "command": "microbit.disconnect",
+          "when": "view == microbitSerial && microbit.connected",
+          "group": "navigation@1"
+        },
+        {
+          "command": "microbit.flash",
+          "when": "view == microbitSerial",
+          "group": "navigation@2"
         }
       ]
     }

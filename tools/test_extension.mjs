@@ -85,6 +85,20 @@ check(src.includes('"workbench.action.tasks.runTask"'),
 
 check((pkg.contributes.commands || []).some((c) => c.command === "microbit.serial"),
       "a command must open the serial console");
+// Connect, Disconnect and Flash are native buttons in the view's header: a
+// click there is a real user gesture, which the USB picker requires.
+const titleMenu = (pkg.contributes.menus || {})["view/title"] || [];
+const menuFor = (id) => titleMenu.find((m) => m.command === id);
+check(menuFor("microbit.connect") && /!microbit\.connected/.test(menuFor("microbit.connect").when),
+      "Connect is a header button, shown while not connected");
+check(menuFor("microbit.disconnect") && /microbit\.connected/.test(menuFor("microbit.disconnect").when)
+      && !/!microbit\.connected/.test(menuFor("microbit.disconnect").when),
+      "Disconnect is a header button, shown while connected");
+check(menuFor("microbit.flash"), "Flash is a header button too");
+for (const id of ["microbit.connect", "microbit.disconnect", "microbit.flash"]) {
+  const c = pkg.contributes.commands.find((x) => x.command === id);
+  check(c && /^\$\(.+\)$/.test(c.icon || ""), `${id} needs a codicon, or it lands in the overflow menu`);
+}
 const views = Object.values(pkg.contributes.views || {}).flat();
 check(views.some((v) => v.id === "microbitSerial" && v.type === "webview"),
       "the serial console is a webview view (input field, Send, Clear), not just an output channel");
@@ -101,13 +115,15 @@ const bar = { show() {}, dispose() {}, set text(_v) {}, get text() { return ""; 
 class EventEmitter { constructor() { this.listeners = []; this.event = (fn) => { this.listeners.push(fn); return { dispose() {} }; }; } fire(v) { for (const fn of this.listeners) fn(v); } }
 const providers = {};
 const executed = [];
+const handlers = {};
 const vscode = {
   EventEmitter,
   window: { createOutputChannel: () => chan, createStatusBarItem: () => bar,
             showErrorMessage() {}, showInformationMessage() {},
             withProgress: async (_o, f) => f({ report() {} }),
             registerWebviewViewProvider: (id, provider) => { providers[id] = provider; return { dispose() {} }; } },
-  commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async (id) => { executed.push(id); } },
+  commands: { registerCommand: (id, fn) => { handlers[id] = fn; return { dispose() {} }; },
+              executeCommand: async (id, ...args) => { executed.push([id, ...args].join(" ")); } },
   tasks: { fetchTasks: async () => [], onDidEndTaskProcess: () => ({ dispose() {} }) },
   StatusBarAlignment: { Left: 1 }, ProgressLocation: { Notification: 15 },
   Uri: { joinPath: () => ({}) },
@@ -123,7 +139,7 @@ try {
     mod, mod.exports, undefined);
   const subs = [];
   mod.exports.activate({ subscriptions: subs });
-  activated = subs.length >= 4;
+  activated = subs.length >= 5;
 } catch (e) {
   fail.push(`activate() threw in a DOM-less host: ${e.message}`);
 }
@@ -149,22 +165,31 @@ const fakeView = {
 mod.exports._serial.received("boot line\n");                 // before the view exists
 mod.exports._serial.open();
 check(executed.includes("microbitSerial.focus"), "opening the console before it exists focuses the view, which resolves it");
+check(typeof handlers["microbit.disconnect"] === "function", "a Disconnect command must exist for the header button");
 providers.microbitSerial.resolveWebviewView(fakeView);
 check(fakeView.webview.options && fakeView.webview.options.enableScripts === true, "the view needs scripts");
 check(/<input[^>]*id="in"/.test(html) && /id="send"/.test(html) && /id="clear"/.test(html),
       "the console has an input field, a Send button and a Clear button");
 check(/Content-Security-Policy[^>]*script-src 'nonce-[0-9a-f]+'/.test(html), "scripts run only with the nonce");
 onMessage({ type: "ready" });
-check(posted.length === 1 && posted[0].text === "boot line\n", "output from before the view existed is replayed on ready");
+check(posted.some((m) => m.type === "status" && m.connected === false), "ready tells the view it is not connected");
+check(posted.some((m) => m.type === "data" && m.text === "boot line\n"), "output from before the view existed is replayed on ready");
 mod.exports._serial.received("a\n");
 check(posted[posted.length - 1].text === "a\n", "live output is posted to the view");
-mod.exports._serial.setConnection({ serialWrite: async (t) => { sentToBoard.push(t); } });
+let disconnected = 0;
+mod.exports._serial.setConnection({ serialWrite: async (t) => { sentToBoard.push(t); }, disconnect: async () => { disconnected++; } });
 onMessage({ type: "send", text: "hi" });
 check(sentToBoard.join("") === "hi\r\n", "Send transmits the line with CR LF");
+executed.length = 0;
+await handlers["microbit.disconnect"]();
+check(disconnected === 1, "Disconnect closes the connection");
+check(executed.includes("setContext microbit.connected false"),
+      "Disconnect flips the microbit.connected context key, which swaps the header buttons");
+check(posted.some((m) => m.type === "status" && m.connected === false), "the view is told about the disconnect");
 onMessage({ type: "clear" });
 posted.length = 0;
 onMessage({ type: "ready" });
-check(posted.length === 0, "after Clear, a re-created view starts empty");
+check(!posted.some((m) => m.type === "data"), "after Clear, a re-created view starts empty");
 mod.exports._serial.open();
 check(fakeView.shown[0] === true, "showing the console again must preserve focus, so the chord keeps working");
 onDispose();

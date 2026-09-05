@@ -8,8 +8,9 @@ One key does the whole job: **Ctrl+Alt+F** (Control+Option+F on a Mac), or the
 task, then flashes `build/main.hex`. The first time, the browser asks which USB
 device to use — choose the micro:bit. Then the **micro:bit › Serial** view
 opens in the bottom panel: your program's output over the same USB connection,
-an input field to send it a line (Enter sends CR LF), and **Clear**. The
-**micro:bit** output channel carries the extension's own log.
+an input field to send it a line (Enter sends CR LF), **Clear**, and header
+buttons to **connect**, **flash** and **disconnect**. The **micro:bit** output
+channel carries the extension's own log.
 
 Made for the [Ada micro:bit course template](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2);
 it flashes any Intel HEX at `build/main.hex`, whatever produced it.
@@ -31,7 +32,8 @@ WebUSB. In desktop VS Code there is no WebUSB either; flash with
 | Command | |
 |---|---|
 | `micro:bit: Build and flash` | **Ctrl+Alt+F** — build, then flash `build/main.hex` |
-| `micro:bit: Connect board` | authorise the board and start the serial console |
+| `micro:bit: Connect board` | authorise the board and open the Serial view |
+| `micro:bit: Disconnect board` | let go of the board, e.g. before another tab uses it |
 | `micro:bit: Open serial console` | the Serial view: output, an input field, Send, Clear |
 | `micro:bit: Show connection status` | what the extension can see |
 
