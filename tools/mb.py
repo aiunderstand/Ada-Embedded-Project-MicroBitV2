@@ -708,15 +708,23 @@ def _installed_extension_dir(publisher: str, name: str) -> Path | None:
 
 
 def _installed_matches(installed: Path, bundled: str, pkg_text: str) -> bool:
-    """Byte-for-byte: is what VS Code has on disk what we would install?
+    """Is what VS Code has on disk what we would install?
 
     VS Code unpacks the vsix's extension/ subtree as the extension root, so the
-    installed layout is <dir>/package.json, not <dir>/extension/package.json.
+    installed layout is <dir>/package.json, not <dir>/extension/package.json --
+    and it appends a "__metadata" object (install time, size) to that
+    package.json, so the manifest is compared as JSON with that key dropped,
+    not byte-for-byte. Found by installing into a real VS Code Server: a
+    byte comparison never matched, and every attach reinstalled.
     """
+    import json
     try:
-        return ((installed / "extension.js").read_bytes() == bundled.encode()
-                and (installed / "package.json").read_bytes() == pkg_text.encode())
-    except OSError:
+        if (installed / "extension.js").read_bytes() != bundled.encode():
+            return False
+        theirs = json.loads((installed / "package.json").read_text())
+        theirs.pop("__metadata", None)
+        return theirs == json.loads(pkg_text)
+    except (OSError, ValueError):
         return False
 
 

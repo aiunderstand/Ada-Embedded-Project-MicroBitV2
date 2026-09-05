@@ -128,9 +128,19 @@ test-web recipe with a spoofed user agent for Windows and Linux.
 false once activation has started, so reinstalling the same version into a
 live window leaves it with a stale mix -- the new manifest's keybinding, no
 command handler: `command 'microbit.flash' not found`. `postAttachCommand`
-runs on *every* attach, so `mb.py extension --install` compares the installed
-copy byte-for-byte and touches nothing when it is identical; when it does
-replace one it says to run `Developer: Reload Window`.
+runs on *every* attach -- and a window reload *is* an attach -- so `mb.py
+extension --install` compares the installed copy with what it would install and
+touches nothing when identical; when it does replace one it says to run
+`Developer: Reload Window`. VS Code appends `__metadata` to the installed
+`package.json`, so that comparison is JSON-with-the-key-dropped, not bytes.
+
+**`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
+worker's `ExtHostTask` only accepts `CustomExecution` tasks; a shell or process
+task like "Build" throws `NotSupported` before anything runs. Use
+`workbench.action.tasks.runTask` (any host, runs on the remote) and wait for
+`tasks.onDidEndTaskProcess` by task name. `@vscode/test-web` did not show this,
+because without a remote `fetchTasks()` returns nothing and the build is
+skipped; `code serve-web` did.
 
 ## Codespaces
 

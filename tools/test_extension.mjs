@@ -45,6 +45,14 @@ check(src.includes("partial: false"),
 // complaint about the old flow.
 check(src.includes("runBuildTask"),
       "flash must build first, so it cannot flash a stale hex");
+// The web worker extension host's tasks API throws NotSupported for anything
+// but a CustomExecution task, so executeTask() on the process task "Build"
+// fails before reaching the board. Found in a real VS Code Server; the
+// workbench command runs any task from any host.
+check(!/tasks\.executeTask\s*\(/.test(src),
+      "must not call vscode.tasks.executeTask: NotSupported in the web worker host");
+check(src.includes('"workbench.action.tasks.runTask"'),
+      "the build must run through workbench.action.tasks.runTask");
 const manifestPkg = JSON.parse(fs.readFileSync(path.join(tmp, "extension/package.json"), "utf8"));
 check((manifestPkg.contributes.keybindings || []).some(k => k.command === "microbit.flash"),
       "flash must have a keybinding, so it needs no command palette");
@@ -115,10 +123,12 @@ if (process.platform !== "win32") {
   check(calls().length === 1 && /--install-extension .*--force/.test(calls()[0]),
         "a first install should call code --install-extension --force");
 
-  // Pretend VS Code unpacked it: the vsix's extension/ subtree becomes the root.
+  // Pretend VS Code unpacked it: the vsix's extension/ subtree becomes the
+  // root, and package.json gains a "__metadata" object -- a real install does
+  // both, and a byte comparison of the manifest never matched because of it.
   const unpacked = path.join(extDir, `${pkg.publisher}.${pkg.name}-${pkg.version}`);
   execFileSync("python3", ["-c", [
-    "import zipfile, pathlib",
+    "import zipfile, pathlib, json",
     `z = zipfile.ZipFile(${JSON.stringify(vsix)})`,
     `root = pathlib.Path(${JSON.stringify(unpacked)})`,
     "for m in z.namelist():",
@@ -126,6 +136,9 @@ if (process.platform !== "win32") {
     "        dest = root / m[len('extension/'):]",
     "        dest.parent.mkdir(parents=True, exist_ok=True)",
     "        dest.write_bytes(z.read(m))",
+    "p = root / 'package.json'; d = json.loads(p.read_text())",
+    "d['__metadata'] = {'installedTimestamp': 1788619298564, 'targetPlatform': 'undefined', 'size': 63834}",
+    "p.write_text(json.dumps(d, indent=2) + '\\n')",
   ].join("\n")]);
 
   out = install();
