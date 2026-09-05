@@ -40,6 +40,7 @@ TEMPLATE_GPR = REPO / "Code" / "itrs.gpr"
 EXAMPLES = REPO / "Code/libs/Ada_Drivers_Library/examples/MicroBit_v2"
 KNOWN_FAILURES = REPO / "tools" / "known_failures.txt"
 ALS_JSON = REPO / ".als.json"
+PROJECT_FILE = REPO / "build" / "project.txt"   # what "Choose project..." picked
 
 TARGET = "nrf52833"
 
@@ -255,15 +256,38 @@ def load_known_failures() -> set[str]:
     return out
 
 
+def chosen_project(args) -> tuple[str, Path]:
+    """The project to build: chosen now, or chosen earlier, or the template.
+
+    --use / --use-dir choose a project and remember it in build/project.txt.
+    A plain build -- which is what Ctrl+Alt+F and "Build & Flash" run -- then
+    rebuilds that choice, so a student can pick an example once and flash it
+    with the same key as their own program. Choosing "template" returns.
+    """
+    if getattr(args, "use_dir", None):
+        pid, gpr = resolve_dir(Path(args.use_dir))
+    elif getattr(args, "use", None):
+        pid, gpr = resolve_id(args.use)
+    else:
+        remembered = PROJECT_FILE.read_text().strip() if PROJECT_FILE.is_file() else ""
+        if remembered and remembered != "template":
+            try:
+                pid, gpr = resolve_id(remembered)
+                info(f"building {pid}, chosen earlier with 'Choose project...' -- "
+                     "choose 'template' to return to your own program")
+                return pid, gpr
+            except SystemExit:
+                info(f"'{remembered}' (chosen earlier) no longer exists; building the template")
+        return "template", TEMPLATE_GPR
+    BUILD.mkdir(parents=True, exist_ok=True)
+    PROJECT_FILE.write_text(pid + "\n")
+    return pid, gpr
+
+
 def cmd_build(args) -> int:
     if args.all:
         return build_all(args)
-    if args.use_dir:
-        pid, gpr = resolve_dir(Path(args.use_dir))
-    elif args.use:
-        pid, gpr = resolve_id(args.use)
-    else:
-        pid, gpr = "template", TEMPLATE_GPR
+    pid, gpr = chosen_project(args)
     info(f"building {pid} ({rel(gpr)})")
     if not build_one(pid, gpr):
         return 1
@@ -1034,6 +1058,8 @@ def cmd_setup(args) -> int:
 
 def cmd_doctor(args) -> int:
     """Exit non-zero only for build-critical tools; flashing tools are optional."""
+    chosen = PROJECT_FILE.read_text().strip() if PROJECT_FILE.is_file() else "template"
+    print(f"Project: {chosen}  (Choose project... changes it; 'template' is your own program)")
     print("Build tools (required):")
     critical_ok = True
     for name, probe in (("alr", ["alr", "--version"]),

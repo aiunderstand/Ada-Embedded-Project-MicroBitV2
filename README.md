@@ -65,7 +65,7 @@ python3 tools/mb.py prove --use spark/bounded_queue
 ```
 
 In VS Code, **Ctrl+Shift+B** does the common one, and *Tasks: Run Task* has the
-rest — including **Choose project…** for building any of the 46 examples without
+rest — including **Choose project…** for building and flashing any of the 46 examples without
 closing the folder.
 
 ## Examples

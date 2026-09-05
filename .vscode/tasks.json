@@ -35,7 +35,7 @@
             "type": "process",
             "command": "python3",
             "windows": { "command": "python" },
-            "args": ["tools/mb.py", "flash", "--use", "${input:project}"],
+            "args": ["tools/mb.py", "build", "--use", "${input:project}"],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": ["$ada-error", "$ada-warning"],
             "group": "build"
@@ -48,7 +48,7 @@
             "type": "process",
             "command": "python3",
             "windows": { "command": "python" },
-            "args": ["tools/mb.py", "flash", "--use-dir", "${fileDirname}"],
+            "args": ["tools/mb.py", "build", "--use-dir", "${fileDirname}"],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": ["$ada-error", "$ada-warning"],
             "group": "build"
