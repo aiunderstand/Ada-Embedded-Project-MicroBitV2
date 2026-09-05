@@ -134,6 +134,17 @@ touches nothing when identical; when it does replace one it says to run
 `Developer: Reload Window`. VS Code appends `__metadata` to the installed
 `package.json`, so that comparison is JSON-with-the-key-dropped, not bytes.
 
+**The extension's version is derived from its content.** VS Code Server serves
+anything under its extensions folder with `Cache-Control: public,
+max-age=31536000` (`remoteExtensionHostAgentServer.ts`, when built -- i.e. in
+every Codespace), at a URL that contains only `<publisher>.<name>-<version>`.
+Reinstall changed code under the same version and, after a reload, the manifest
+arrives fresh over RPC while the worker's `extension.js` comes from the browser
+cache: a year-old file with a new keybinding pointing at it. So `mb.py
+extension` sets the patch number from a hash of the package; `extension/
+package.json` keeps `0.1.0` and only its major.minor are used. Do not "fix" the
+odd-looking version.
+
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
 worker's `ExtHostTask` only accepts `CustomExecution` tasks; a shell or process
 task like "Build" throws `NotSupported` before anything runs. Use

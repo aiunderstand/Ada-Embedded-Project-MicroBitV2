@@ -137,6 +137,14 @@ notification after the chord is the command running. With no board, a fully
 working flow ends in a USB error *after* the build has run — check
 `build/main.hex`'s mtime moved.
 
+**Check the cache headers when code seems stale:**
+`curl -sI 'http://localhost:8100/vscode-remote-resource?path=<extensions>/<dir>/extension.js'`
+shows `cache-control: public, max-age=31536000`. A same-version reinstall keeps
+the URL, so a reload can run old code under a new manifest; that is why the
+packaged version is content-derived, and why a test here should install a
+*changed* build and confirm the new code runs after the reload (a marker line
+in the output channel is enough).
+
 ## 6. Counting the steps
 
 To judge whether a flow is too cumbersome, count what a student actually does —
