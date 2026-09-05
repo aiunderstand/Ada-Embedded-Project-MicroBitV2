@@ -85,19 +85,45 @@ check(src.includes('"workbench.action.tasks.runTask"'),
 
 check((pkg.contributes.commands || []).some((c) => c.command === "microbit.serial"),
       "a command must open the serial console");
+// Connect, Disconnect and Flash are native buttons in the view's header: a
+// click there is a real user gesture, which the USB picker requires.
+const titleMenu = (pkg.contributes.menus || {})["view/title"] || [];
+const menuFor = (id) => titleMenu.find((m) => m.command === id);
+check(menuFor("microbit.connect") && /!microbit\.connected/.test(menuFor("microbit.connect").when),
+      "Connect is a header button, shown while not connected");
+check(menuFor("microbit.disconnect") && /microbit\.connected/.test(menuFor("microbit.disconnect").when)
+      && !/!microbit\.connected/.test(menuFor("microbit.disconnect").when),
+      "Disconnect is a header button, shown while connected");
+check(menuFor("microbit.flash"), "Flash is a header button too");
+for (const id of ["microbit.connect", "microbit.disconnect", "microbit.flash"]) {
+  const c = pkg.contributes.commands.find((x) => x.command === id);
+  check(c && /^\$\(.+\)$/.test(c.icon || ""), `${id} needs a codicon, or it lands in the overflow menu`);
+}
+const views = Object.values(pkg.contributes.views || {}).flat();
+check(views.some((v) => v.id === "microbitSerial" && v.type === "webview"),
+      "the serial console is a webview view (input field, Send, Clear), not just an output channel");
+check(Object.keys(pkg.contributes.viewsContainers || {}).includes("panel"),
+      "the console lives in the bottom panel, next to Terminal and Output");
+// A web extension cannot be listed for the container (#144513), but it can be
+// a workspace recommendation, which VS Code offers to install on the browser side.
+const recs = JSON.parse(fs.readFileSync(path.join(root, ".vscode/extensions.json"), "utf8")).recommendations;
+check(recs.includes("AIUnderstand.microbit-flasher"), ".vscode/extensions.json must recommend the flasher");
 
 // Load it exactly as the worker host would: no window, no document.
 const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };
 const bar = { show() {}, dispose() {}, set text(_v) {}, get text() { return ""; } };
 class EventEmitter { constructor() { this.listeners = []; this.event = (fn) => { this.listeners.push(fn); return { dispose() {} }; }; } fire(v) { for (const fn of this.listeners) fn(v); } }
-const terminals = [];
+const providers = {};
+const executed = [];
+const handlers = {};
 const vscode = {
   EventEmitter,
   window: { createOutputChannel: () => chan, createStatusBarItem: () => bar,
             showErrorMessage() {}, showInformationMessage() {},
             withProgress: async (_o, f) => f({ report() {} }),
-            createTerminal: (opts) => { const t = { opts, shown: [], show(p) { this.shown.push(p); } }; terminals.push(t); return t; } },
-  commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async () => {} },
+            registerWebviewViewProvider: (id, provider) => { providers[id] = provider; return { dispose() {} }; } },
+  commands: { registerCommand: (id, fn) => { handlers[id] = fn; return { dispose() {} }; },
+              executeCommand: async (id, ...args) => { executed.push([id, ...args].join(" ")); } },
   tasks: { fetchTasks: async () => [], onDidEndTaskProcess: () => ({ dispose() {} }) },
   StatusBarAlignment: { Left: 1 }, ProgressLocation: { Notification: 15 },
   Uri: { joinPath: () => ({}) },
@@ -113,7 +139,7 @@ try {
     mod, mod.exports, undefined);
   const subs = [];
   mod.exports.activate({ subscriptions: subs });
-  activated = subs.length >= 4;
+  activated = subs.length >= 5;
 } catch (e) {
   fail.push(`activate() threw in a DOM-less host: ${e.message}`);
 }
@@ -121,35 +147,70 @@ check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
 
 // ---------------------------------------------------------- serial console
-// The board's UART arrives as serialdata events; the console is a
-// pseudoterminal. Bytes that arrive before it is open must not be lost, LF
-// must become CR LF for xterm, typing must be echoed (Get does not echo) and
-// sent with CR LF on Enter, and the console must never take focus, or the
-// next Ctrl+Alt+F would type into it instead of flashing.
-const written = [];
-mod.exports._serial.received("boot line\n");                 // before any console
+// The board's UART arrives as serialdata events; the console is a webview view
+// with an input field, Send and Clear. Bytes that arrive before the view exists
+// must be replayed into it, Enter must send CR LF, Clear must forget the
+// backlog, and showing the view again must not steal focus from the editor.
+check(providers.microbitSerial, "activate() must register the serial view provider");
+const posted = [], sentToBoard = [];
+let onMessage = null, onDispose = null, html = "";
+const fakeView = {
+  webview: { cspSource: "vscode-webview://x", options: null,
+             set html(h) { html = h; }, get html() { return html; },
+             postMessage(m) { posted.push(m); },
+             onDidReceiveMessage(cb) { onMessage = cb; return { dispose() {} }; } },
+  onDidDispose(cb) { onDispose = cb; return { dispose() {} }; },
+  shown: [], show(p) { this.shown.push(p); },
+};
+mod.exports._serial.received("boot line\n");                 // before the view exists
 mod.exports._serial.open();
-check(terminals.length === 1 && terminals[0].opts.name === "micro:bit serial",
-      "opening the console creates a pseudoterminal named micro:bit serial");
-const t0 = terminals[0];
-check(t0.shown[0] === true, "the console must be shown with preserveFocus, so the chord keeps working");
-t0.opts.pty.onDidWrite((d) => written.push(d));
-t0.opts.pty.open();
-check(written.join("") === "boot line\r\n", "output that arrived before the console opened is replayed, LF as CR LF");
-mod.exports._serial.received("a\r\nb\n");
-check(written.join("") === "boot line\r\na\r\nb\r\n", "CR LF is passed through, bare LF becomes CR LF");
-mod.exports._serial.received("\n--- program restarted ---\n");
-check(/restarted/.test(written.join("")), "a reset shows a divider in the console");
-written.length = 0;
-t0.opts.pty.handleInput("x\r");
-check(written.join("") === "x\r\n", "typing is echoed, Enter as CR LF");
-t0.opts.pty.handleInput("\x1b[A");
-check(written.join("") === "x\r\n", "escape sequences are dropped, not echoed or sent");
+check(executed.includes("microbitSerial.focus"), "opening the console before it exists focuses the view, which resolves it");
+check(typeof handlers["microbit.disconnect"] === "function", "a Disconnect command must exist for the header button");
+providers.microbitSerial.resolveWebviewView(fakeView);
+check(fakeView.webview.options && fakeView.webview.options.enableScripts === true, "the view needs scripts");
+check(/<input[^>]*id="in"/.test(html) && /id="send"/.test(html) && /id="clear"/.test(html),
+      "the console has an input field, a Send button and a Clear button");
+check(/Content-Security-Policy[^>]*script-src 'nonce-[0-9a-f]+'/.test(html), "scripts run only with the nonce");
+// The HTML is built from a template literal, where "\n" is interpreted: a real
+// line break landed inside a string in the view's script, which then never
+// ran -- no Send, no status, and Enter submitted the form for real.
+const inlineScript = /<script nonce="[0-9a-f]+">([\s\S]*?)<\/script>/.exec(html);
+check(inlineScript, "the view has one nonce'd inline script");
+try { new Function(inlineScript ? inlineScript[1] : "throw 1"); check(true, ""); }
+catch (e) { check(false, `the view's script must parse: ${e.message}`); }
+onMessage({ type: "ready" });
+check(posted.some((m) => m.type === "status" && m.connected === false), "ready tells the view it is not connected");
+check(posted.some((m) => m.type === "data" && m.text === "boot line\n"), "output from before the view existed is replayed on ready");
+mod.exports._serial.received("a\n");
+check(posted[posted.length - 1].text === "a\n", "live output is posted to the view");
+let disconnected = 0;
+mod.exports._serial.setConnection({ serialWrite: async (t) => { sentToBoard.push(t); }, disconnect: async () => { disconnected++; } });
+onMessage({ type: "send", text: "hi" });
+check(sentToBoard.join("") === "hi\r\n", "Send transmits the line with CR LF");
+executed.length = 0;
+await handlers["microbit.disconnect"]();
+check(disconnected === 1, "Disconnect closes the connection");
+check(executed.includes("setContext microbit.connected false"),
+      "Disconnect flips the microbit.connected context key, which swaps the header buttons");
+check(posted.some((m) => m.type === "status" && m.connected === false), "the view is told about the disconnect");
+onMessage({ type: "clear" });
+posted.length = 0;
+onMessage({ type: "ready" });
+check(!posted.some((m) => m.type === "data"), "after Clear, a re-created view starts empty");
 mod.exports._serial.open();
-check(terminals.length === 1 && t0.shown.length === 2, "opening again brings the same console forward");
-t0.opts.pty.close();
+check(fakeView.shown[0] === true, "showing the console again must preserve focus, so the chord keeps working");
+onDispose();
+mod.exports._serial.received("later\n");
+posted.length = 0;
+executed.length = 0;
 mod.exports._serial.open();
-check(terminals.length === 2, "after the student closes it, the next open creates a fresh console");
+check(executed.includes("microbitSerial.focus"), "after the view is disposed, opening resolves a new one");
+
+// The picker only appears while the keypress is still a fresh user gesture,
+// and a full build outlasts it: the device must be asked for before building.
+const flashBody = src.slice(src.indexOf("async function cmdFlash"), src.indexOf("async function cmdStatus"));
+check(flashBody.indexOf("ensureConnected()") < flashBody.indexOf("runBuildTask()"),
+      "cmdFlash must connect (and show the picker) before it builds");
 
 // ------------------------------------------------------ the flash, in a worker
 // A worker's navigator.usb has getDevices() but no requestDevice(). The first
@@ -222,9 +283,61 @@ check(fs.existsSync(path.join(root, ".github/workflows/publish-extension.yml")),
       "a publishing workflow must exist");
 
 fs.rmSync(out, { recursive: true, force: true });
+
+// ------------------------------------------------------------ the companion
+// A web extension cannot be installed into a student's browser by anything in
+// a repository -- except an extension already running in the container that
+// asks the workbench to. That is the companion: a plain Node extension,
+// listed in devcontainer.json, which installs the flasher on startup.
+const cout = fs.mkdtempSync(path.join(os.tmpdir(), "companion-"));
+execFileSync("python3", ["tools/mb.py", "companion", "--out", cout], { cwd: root, stdio: "pipe" });
+const cpkg = JSON.parse(fs.readFileSync(path.join(cout, "package.json"), "utf8"));
+check(cpkg.publisher === "AIUnderstand" && cpkg.name === "microbit-companion", "companion identity");
+check(cpkg.main && !cpkg.browser, "the companion is a Node extension: it must run in the container");
+check(Array.isArray(cpkg.extensionKind) && cpkg.extensionKind[0] === "workspace",
+      "extensionKind workspace, so a Codespace runs it in the container");
+check((cpkg.activationEvents || []).includes("onStartupFinished"), "the companion runs at startup");
+check(/AIUnderstand\.microbit-companion/.test(devcontainer) && !/microbit-flasher/.test(devcontainer.replace(/\/\/.*$/gm, "")),
+      "devcontainer.json must list the companion and never the flasher");
+const csrc = fs.readFileSync(path.join(cout, "extension.js"), "utf8");
+async function runCompanion({ uiKind, present, force = false }) {
+  const executed = [], messages = [];
+  const state = {};
+  let handler;
+  const vs = {
+    env: { uiKind, openExternal() {} }, UIKind: { Web: 2, Desktop: 1 },
+    Uri: { parse: (u) => u },
+    extensions: { getExtension: () => (present ? { id: "AIUnderstand.microbit-flasher" } : undefined) },
+    commands: { registerCommand: (id, fn) => { handler = fn; return { dispose() {} }; },
+                executeCommand: async (...a) => { executed.push(a.join(" ")); } },
+    window: { showInformationMessage: async (m) => { messages.push(m); }, showWarningMessage: async () => undefined },
+  };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", csrc)((n) => vs, m, m.exports);
+  const ctx = { subscriptions: [], globalState: { get: (k) => state[k], update: async (k, v) => { state[k] = v; } } };
+  const result = await m.exports.activate(ctx);
+  if (force) await handler();
+  return { result, executed, messages, state };
+}
+const fresh = await runCompanion({ uiKind: 2, present: false });
+check(fresh.executed.includes("workbench.extensions.installExtension AIUnderstand.microbit-flasher"),
+      "in the browser, with no flasher, the companion asks the workbench to install it");
+check(fresh.result === "installed" && fresh.state["microbit.flasherInstalled"] === true,
+      "a successful install is remembered, so it is not repeated on every attach");
+check(fresh.messages.some((m) => /Ctrl\+Alt\+F/.test(m)), "and the student is told what to do next");
+const already = await runCompanion({ uiKind: 2, present: true });
+check(already.result === "present" && !already.executed.some((e) => /installExtension/.test(e)),
+      "with the flasher present, nothing is installed");
+const desktop = await runCompanion({ uiKind: 1, present: false });
+check(desktop.result === "desktop" && !desktop.executed.some((e) => /installExtension/.test(e)),
+      "desktop VS Code has no WebUSB: the companion does nothing there");
+const forcedRun = await runCompanion({ uiKind: 2, present: true, force: true });
+check(forcedRun.executed.some((e) => /installExtension/.test(e)), "the command installs even when a copy is present");
+fs.rmSync(cout, { recursive: true, force: true });
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  extension: folder, manifest, keybinding, worker-safe bundle, activation, delivery wiring");
+console.log("PASS  extension: folder, manifest, keybinding, worker-safe bundle, activation, delivery wiring, companion");

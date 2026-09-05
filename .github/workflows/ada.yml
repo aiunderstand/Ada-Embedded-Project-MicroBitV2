@@ -238,6 +238,11 @@ jobs:
           cd build/extension
           npx --yes @vscode/vsce@latest package --no-dependencies --out "$RUNNER_TEMP/microbit-flasher.vsix"
           ls -la "$RUNNER_TEMP/microbit-flasher.vsix"
+          cd "$GITHUB_WORKSPACE"
+          python3 tools/mb.py companion --out build/companion
+          cd build/companion
+          npx --yes @vscode/vsce@latest package --no-dependencies --out "$RUNNER_TEMP/microbit-companion.vsix"
+          ls -la "$RUNNER_TEMP/microbit-companion.vsix"
 
       - name: Tasks must stay platform agnostic
         run: |

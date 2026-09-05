@@ -610,6 +610,38 @@ def cmd_extension(args) -> int:
     return 0
 
 
+def cmd_companion(args) -> int:
+    """Assemble the Codespace-side companion extension as a folder.
+
+    It runs in the container, where devcontainer.json installs it like any
+    other, and asks the workbench to install the flasher into the browser --
+    the one way a repository can get a web extension in front of a student
+    without a click. Plain Node, nothing to bundle.
+    """
+    out = Path(args.out).resolve() if args.out else BUILD / "companion"
+    write_companion(out, args.version)
+    info(f"companion assembled in {rel(out)} (version {json_load(out / 'package.json')['version']})")
+    return 0
+
+
+def write_companion(out: Path, version: str | None = None) -> None:
+    import json
+    src = REPO / "companion"
+    pkg = json_load(src / "package.json")
+    if version:
+        pkg["version"] = version
+    if out.is_relative_to(BUILD) and out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "package.json").write_text(json.dumps(pkg, indent=2) + "\n")
+    for name in ("extension.js", "README.md"):
+        shutil.copy2(src / name, out / name)
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt"):
+        if (REPO / name).is_file():
+            shutil.copy2(REPO / name, out / "LICENSE")
+            break
+
+
 def write_extension(out: Path, version: str | None = None) -> None:
     """package.json, the bundled extension.js, README and LICENSE into `out`.
 
@@ -1091,6 +1123,12 @@ def main() -> int:
                    help="override the version from extension/package.json "
                         "(the publishing workflow passes a monotonic one)")
     p.set_defaults(func=cmd_extension)
+
+    p = sub.add_parser("companion",
+                       help="assemble the Codespace-side companion extension folder")
+    p.add_argument("--out", help="output folder (default: build/companion)")
+    p.add_argument("--version", help="override the version from companion/package.json")
+    p.set_defaults(func=cmd_companion)
 
     p = sub.add_parser("clean", help="remove the build tree")
     p.set_defaults(func=cmd_clean)

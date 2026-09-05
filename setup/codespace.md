@@ -67,12 +67,19 @@ No download, no file to drag.
 > because it is a VS Code **web extension**: VS Code runs it in your
 > *browser*, on your own laptop, where the board is actually plugged in.
 
-**Once per Codespace, install the flasher in your browser.** Open the
-Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), type
-`AIUnderstand.microbit-flasher` in its search box, and click **Install** on
-*micro:bit v2 Flasher*.
-**Flash micro:bit** appears in the status bar a few seconds later. (If VS Code
-offers a choice, pick *Install in Browser*: the Codespace itself cannot run it.)
+**The flasher installs itself into your browser** the first time the Codespace
+opens — a small companion extension inside the Codespace asks VS Code to do it,
+and a message says so. Give it a minute; **Flash micro:bit** then sits at the
+bottom-left of the window.
+
+If it never appears: run `micro:bit: Install the flasher in this browser` from
+the command palette (**Ctrl+Shift+P**, **Cmd+Shift+P** on a Mac). Failing that,
+open the Extensions view (**Ctrl+Shift+X**), type `AIUnderstand.microbit-flasher`
+in its search box, and click **Install** on *micro:bit v2 Flasher*.
+
+> Why does this one need help when the Ada extension just appears? Those run
+> *inside* the Codespace; the flasher has to run in your **browser**, where the
+> USB port is, and only something already running in VS Code can put it there.
 
 Then, every time:
 
@@ -85,12 +92,16 @@ Then, every time:
 That one action **builds and flashes**. You do not need to build first, and it
 can never flash yesterday's firmware by mistake.
 
-After the flash, a **micro:bit serial** terminal opens next to your normal
-terminal: everything your program `Put_Line`s appears there, over the same USB
-connection. Click into it and type to send characters to your program —
-`MicroBit.Console.Get` receives them one at a time, and Enter sends CR LF, the
-same line ending `Put_Line` writes. Closed it? Run `micro:bit: Open serial
-console` from the command palette.
+After the flash, a **micro:bit › Serial** view opens in the bottom panel, next
+to *Terminal*: everything your program `Put_Line`s appears there, over the same
+USB connection. Type a line in the field at the bottom and press **Enter** (or
+**Send**) to send it to your program — `MicroBit.Console.Get` receives it one
+character at a time, ending in CR LF, the same line ending `Put_Line` writes.
+**Clear** empties the view. Its header has three buttons: **plug** connects
+to the board, **⚡** builds and flashes (the same as Ctrl+Alt+F), and, once
+connected, **disconnect** lets go of the board — do that before using the
+board from another program or tab. Closed the view? Run `micro:bit: Open
+serial console` from the command palette.
 
 A progress notification shows the flash, and `Put_Line` output appears in the
 **micro:bit** output channel. After the first time, the board reconnects by
@@ -152,6 +163,10 @@ Codespace* instead of in your browser, and there it can never start — a
 long-standing VS Code limitation, not something you did. In the Extensions
 view, find *micro:bit v2 Flasher*; if it says it is installed in the Codespace,
 uninstall it there and use **Install in Browser** instead.
+
+**The first flash says "Must be handling a user gesture".** The browser shows
+the USB picker only right after your keypress. Press Ctrl+Alt+F again; the
+board is asked for first, before the build, and once chosen it is remembered.
 
 **Flash micro:bit never appears after installing.** Use Chrome, Edge or Opera —
 Safari and Firefox have no WebUSB. Then check *Show Running Extensions* in the

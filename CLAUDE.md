@@ -17,9 +17,10 @@ low-maintenance option over the clever one.
 Code/src/main.adb                 the student's program -- the file they edit
 Code/itrs.gpr                     the template project
 Code/libs/Ada_Drivers_Library     git submodule -> aiunderstand/Ada_Drivers_Library (a fork we own)
-tools/mb.py                       the one driver: build / flash / prove / serve / setup / extension
+tools/mb.py                       the one driver: build / flash / prove / serve / setup / extension / companion
 docs/                             the GitHub Pages flasher (index.html + app.mjs + vendor/)
-extension/                        VS Code *web* extension: flashing from a Codespace
+extension/                        VS Code *web* extension: flashing from a Codespace (runs in the browser)
+companion/                        its Codespace-side helper: installs the flasher into the browser
 setup/                            per-path student guides
 ```
 
@@ -117,6 +118,13 @@ remain and the pull is unchanged — the image merely *looks* smaller.
 **`git status` always exits 0.** Cleanliness guards must be
 `test -z "$(git status --porcelain -uall)"`.
 
+**A template literal interprets `\n`.** The Serial view's HTML is a template
+literal in `extension.js`; a `"\n"` meant for the view's own script arrived as
+a real line break inside a string, the script died with a syntax error, and the
+view sat at "Not connected" while the extension posted into it. Write `\\n`
+there, and run the view's script for real: `tools/test_extension.mjs` parses
+it, and the `verify-ui` skill drives the HTML in Chromium.
+
 **Check a new keybinding against VS Code's defaults, per platform.** The
 extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
 as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
@@ -156,10 +164,25 @@ A Codespace has **no USB**. Three consequences:
    Device authorisation uses `workbench.experimental.requestUsbDevice`, filtered
    to vendor `0x0d28`.
 3. A **VS Code webview cannot do this**: webview iframes are not granted
-   `allow="usb"`. Rendering-only integrations (e.g. Surfer) work in a webview;
-   device access does not.
+   `allow="usb"`. Rendering-only integrations work in a webview; device access
+   does not. The serial console *is* a webview view — the extension holds the
+   device and the view only shows and asks.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
+   Never listed in `devcontainer.json`, which installs into the container.
+   Nothing in a repository can put it into a student's browser -- except an
+   extension already running: `companion/` is a plain Node extension, listed
+   in `devcontainer.json`, that on startup runs
+   `workbench.extensions.installExtension` for the flasher, and the workbench
+   installs a web-only extension in the browser (the same path as clicking
+   Install). `.vscode/extensions.json` recommends the flasher as well.
+   Settings Sync is off by default in the Codespaces web client, so without
+   the companion the recommendation prompt is the floor. The USB picker only
+   appears within a few
+   seconds of a user gesture, so `cmdFlash` asks for the device *before* it
+   builds, and Connect/Disconnect/Flash are native view-header buttons rather
+   than buttons inside the webview.
+
    `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
    above). `setup/publishing.md` is the lecturer's publishing procedure.
 

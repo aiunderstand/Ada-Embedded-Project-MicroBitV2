@@ -35,28 +35,36 @@ function setStatus(text, busy) {
   status.show();
 }
 
+let connected = false;
+
+/** One place for "are we connected": the view's buttons, its status line, the status bar. */
+function setConnected(value) {
+  connected = value;
+  vscode.commands.executeCommand("setContext", "microbit.connected", value);
+  setStatus(value ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
+  if (serialView) {
+    serialView.webview.postMessage({ type: "status", connected: value });
+  }
+}
+
 // ---------------------------------------------------------------- serial
 //
 // The board's UART comes over the same authorised USB device: DAPLink bridges
 // it through the CMSIS-DAP interface, and the bundled library delivers it as
-// "serialdata" events and accepts text back through serialWrite(). An output
-// channel can show it but cannot take input, so the console is a VS Code
-// pseudoterminal: the extension supplies what appears, and gets the keys.
+// "serialdata" events and accepts text back through serialWrite(). The console
+// is a webview view in the bottom panel -- an output area, an input field,
+// Send and Clear. The extension holds the USB connection; the view only shows
+// and asks, so a webview's lack of USB access does not matter here.
 
+const SERIAL_VIEW = "microbitSerial"; // contributes.views id; VS Code adds "<id>.focus"
 const SERIAL_BACKLOG_MAX = 64 * 1024;
-let serial = null;      // { terminal, write } while the console is open
-let serialBacklog = ""; // what arrived while it was not
-
-/** xterm needs CR LF; Put_Line sends it, a bare Put (ASCII.LF) does not. */
-function forTerminal(text) {
-  return text.replace(/\r?\n/g, "\r\n");
-}
+let serialView = null;  // the WebviewView while it exists
+let serialBacklog = ""; // what has been shown, so a re-created view can redraw
 
 function serialReceived(data) {
-  if (serial) {
-    serial.write(forTerminal(data));
-  } else {
-    serialBacklog = (serialBacklog + data).slice(-SERIAL_BACKLOG_MAX);
+  serialBacklog = (serialBacklog + data).slice(-SERIAL_BACKLOG_MAX);
+  if (serialView) {
+    serialView.webview.postMessage({ type: "data", text: data });
   }
 }
 
@@ -68,39 +76,126 @@ function serialSend(text) {
   connection.serialWrite(text).catch((err) => log(`serial write failed: ${err.message}`));
 }
 
-/** Open the console, or bring it forward. Never takes focus: Ctrl+Alt+F must keep working. */
+/** Show the console. The first time this resolves the view; never steals focus after that. */
 function openSerialConsole() {
-  if (serial) {
-    serial.terminal.show(true);
+  if (serialView) {
+    serialView.show(true);
     return;
   }
-  const out = new vscode.EventEmitter();
-  const pty = {
-    onDidWrite: out.event,
-    open() {
-      if (serialBacklog) {
-        out.fire(forTerminal(serialBacklog));
+  vscode.commands.executeCommand(`${SERIAL_VIEW}.focus`);
+}
+
+function nonce() {
+  const bytes = new Uint8Array(16);
+  (globalThis.crypto || {}).getRandomValues?.(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") || String(Date.now());
+}
+
+function serialHtml(cspSource) {
+  const n = nonce();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${n}';">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font-family: var(--vscode-editor-font-family, monospace);
+         font-size: var(--vscode-editor-font-size, 13px); color: var(--vscode-editor-foreground);
+         background: var(--vscode-editor-background); }
+  #status { padding: 3px 8px; font-size: 90%; opacity: 0.8; border-bottom: 1px solid var(--vscode-panel-border, #444); }
+  #status.on::before { content: "\u25cf "; color: var(--vscode-testing-iconPassed, #3c3); }
+  #status.off::before { content: "\u25cb "; }
+  #out { flex: 1; margin: 0; padding: 6px 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  #out .sent { opacity: 0.6; }
+  form { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--vscode-panel-border, #444); }
+  input { flex: 1; font: inherit; padding: 4px 6px; color: var(--vscode-input-foreground);
+          background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
+  input:focus { outline: 1px solid var(--vscode-focusBorder); }
+  button { font: inherit; padding: 4px 12px; border: none; cursor: pointer;
+           color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+  button:hover { background: var(--vscode-button-hoverBackground); }
+  button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+</style>
+</head>
+<body>
+<div id="status" class="off">Not connected \u2014 press Ctrl+Alt+F, or Connect in this view's header</div>
+<pre id="out" aria-live="polite"></pre>
+<form id="form" autocomplete="off">
+  <input id="in" type="text" placeholder="Type a line and press Enter to send it to the micro:bit" aria-label="Text to send">
+  <button type="submit" id="send">Send</button>
+  <button type="button" id="clear" class="secondary">Clear</button>
+</form>
+<script nonce="${n}">
+  const vscode = acquireVsCodeApi();
+  const out = document.getElementById("out");
+  const form = document.getElementById("form");
+  const input = document.getElementById("in");
+  const MAX = 200 * 1024;
+  function append(text, cls) {
+    const atBottom = out.scrollTop + out.clientHeight >= out.scrollHeight - 24;
+    const node = cls ? Object.assign(document.createElement("span"), { className: cls, textContent: text })
+                     : document.createTextNode(text);
+    out.appendChild(node);
+    while (out.textContent.length > MAX && out.firstChild) out.removeChild(out.firstChild);
+    if (atBottom) out.scrollTop = out.scrollHeight;
+  }
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m.type === "data") append(m.text);
+    else if (m.type === "clear") out.textContent = "";
+    else if (m.type === "status") {
+      const el = document.getElementById("status");
+      el.className = m.connected ? "on" : "off";
+      el.textContent = m.connected ? "Connected to the micro:bit"
+        : "Not connected \u2014 press Ctrl+Alt+F, or Connect in this view's header";
+    }
+  });
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value;
+    input.value = "";
+    append("\u203a " + text + "\\n", "sent");
+    vscode.postMessage({ type: "send", text });
+    input.focus();
+  });
+  document.getElementById("clear").addEventListener("click", () => {
+    out.textContent = "";
+    vscode.postMessage({ type: "clear" });
+    input.focus();
+  });
+  vscode.postMessage({ type: "ready" });
+</script>
+</body>
+</html>`;
+}
+
+const serialViewProvider = {
+  resolveWebviewView(view) {
+    serialView = view;
+    view.webview.options = { enableScripts: true };
+    view.webview.html = serialHtml(view.webview.cspSource);
+    view.webview.onDidReceiveMessage((m) => {
+      if (m.type === "ready") {
+        // A new view (first open, or re-created after the panel was closed)
+        // starts from what has been received so far.
+        view.webview.postMessage({ type: "status", connected });
+        if (serialBacklog) view.webview.postMessage({ type: "data", text: serialBacklog });
+      } else if (m.type === "send") {
+        // Enter sends CR LF, the terminator Put_Line itself writes, so a Get
+        // loop that stops on either character works.
+        serialSend(`${m.text}\r\n`);
+      } else if (m.type === "clear") {
         serialBacklog = "";
       }
-    },
-    close() {
-      serial = null;
-    },
-    handleInput(data) {
-      // Keys reach the board as typed, except escape sequences (arrows, or a
-      // chord the terminal swallowed), which would only be garbage to a
-      // program reading characters. MicroBit.Console.Get does not echo, so
-      // the console does; Enter sends CR LF, the terminator Put_Line writes.
-      if (data.startsWith("\x1b")) return;
-      const text = data.replace(/\r/g, "\r\n");
-      out.fire(text);
-      serialSend(text);
-    },
-  };
-  const terminal = vscode.window.createTerminal({ name: "micro:bit serial", pty });
-  serial = { terminal, write: (text) => out.fire(text) };
-  terminal.show(true);
-}
+    });
+    view.onDidDispose(() => {
+      if (serialView === view) serialView = null;
+    });
+  },
+};
 
 /** The first workspace folder, or undefined when no folder is open. */
 function workspaceRoot() {
@@ -189,7 +284,7 @@ async function ensureConnected() {
   usb.usbDevice = device;
   usb.addEventListener("status", ({ status: s }) => {
     log(`connection: ${s}`);
-    setStatus(s === "Connected" ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
+    setConnected(s === "Connected");
   });
   usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
   usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
@@ -203,13 +298,27 @@ async function cmdConnect() {
   try {
     setStatus("connecting", true);
     await ensureConnected();
-    log("Connected. Serial output is in the \"micro:bit serial\" terminal.");
+    log("Connected. Serial output is in the micro:bit Serial view.");
     openSerialConsole();
-    setStatus("Flash micro:bit (connected)", false);
+    setConnected(true);
   } catch (err) {
-    setStatus("Flash micro:bit", false);
+    setConnected(false);
     log(`Error: ${err.message}`);
     vscode.window.showErrorMessage(`micro:bit: ${err.message}`);
+  }
+}
+
+async function cmdDisconnect() {
+  const usb = connection;
+  connection = null;
+  setConnected(false);
+  if (usb) {
+    try {
+      await usb.disconnect();
+      log("Disconnected.");
+    } catch (err) {
+      log(`disconnect: ${err.message}`);
+    }
   }
 }
 
@@ -252,7 +361,12 @@ async function runBuildTask() {
 async function cmdFlash() {
   output.show(true);
   try {
-    // Build first, so one action does the whole job and a stale hex can never
+    // The board first: Chrome shows the USB picker only while it is handling
+    // the user's gesture, a window of about five seconds, and a full build is
+    // longer than that. Asking now, straight from the keypress, keeps the first
+    // flash on a machine inside it; once authorised there is no picker at all.
+    const usb = await ensureConnected();
+    // Then build, so one action does the whole job and a stale hex can never
     // be flashed silently. Previously this failed with "build first" if you
     // forgot, and the status-bar button could flash yesterday's firmware.
     const built = await runBuildTask();
@@ -265,7 +379,6 @@ async function cmdFlash() {
       );
     }
     const hex = await readHex();
-    const usb = await ensureConnected();
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: "Flashing micro:bit" },
       async (progress) => {
@@ -325,9 +438,12 @@ function activate(context) {
     output,
     status,
     vscode.commands.registerCommand("microbit.connect", cmdConnect),
+    vscode.commands.registerCommand("microbit.disconnect", cmdDisconnect),
     vscode.commands.registerCommand("microbit.flash", cmdFlash),
     vscode.commands.registerCommand("microbit.status", cmdStatus),
-    vscode.commands.registerCommand("microbit.serial", openSerialConsole)
+    vscode.commands.registerCommand("microbit.serial", openSerialConsole),
+    vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
+      { webviewOptions: { retainContextWhenHidden: true } })
   );
 
   // Reconnect silently if the board was authorised earlier in this browser, so
@@ -367,5 +483,9 @@ module.exports = {
   activate,
   deactivate,
   // For tools/test_extension.mjs, which has no board to emit serial data.
-  _serial: { received: serialReceived, open: openSerialConsole },
+  _serial: {
+    received: serialReceived,
+    open: openSerialConsole,
+    setConnection: (c) => { connection = c; },
+  },
 };
