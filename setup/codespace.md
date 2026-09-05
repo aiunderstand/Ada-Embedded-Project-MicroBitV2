@@ -70,16 +70,19 @@ No download, no file to drag.
 The extension is built and installed automatically when the Codespace starts.
 
 1. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
-2. Build with **Ctrl+Shift+B** if you have not already.
-3. Press **Ctrl+Shift+P** and run **micro:bit: Flash build/main.hex**.
-4. The first time, your browser asks which device to use — choose the micro:bit.
+2. Click **Flash micro:bit** in the status bar, at the bottom of the window.
+   (Or press **Ctrl+Alt+F** — **Cmd+Alt+F** on a Mac.)
+3. The first time only, your browser asks which device to use — choose the
+   micro:bit.
+
+That one action **builds and flashes**. You do not need to build first, and it
+can never flash yesterday's firmware by mistake.
 
 A progress notification shows the flash, and `Put_Line` output appears in the
-**micro:bit** output channel. There is also a **micro:bit** button in the status
-bar that flashes the current build.
+**micro:bit** output channel. After the first time, the board reconnects by
+itself when the Codespace opens, so there is no device prompt again.
 
-Rebuild and run the command again; it always flashes the current
-`build/main.hex`.
+Change your code and click the same button.
 
 **Use Chrome, Edge or Opera.** Safari and Firefox do not implement WebUSB.
 

@@ -41,6 +41,13 @@ check(src.includes("workbench.experimental.requestUsbDevice"),
       "device authorisation must go through the VS Code command");
 check(src.includes("partial: false"),
       "flashing must force a full flash; partial flashing is MakeCode-only");
+// One action must do the whole job: flashing a stale hex silently was the main
+// complaint about the old flow.
+check(src.includes("runBuildTask"),
+      "flash must build first, so it cannot flash a stale hex");
+const manifestPkg = JSON.parse(fs.readFileSync(path.join(tmp, "extension/package.json"), "utf8"));
+check((manifestPkg.contributes.keybindings || []).some(k => k.command === "microbit.flash"),
+      "flash must have a keybinding, so it needs no command palette");
 
 // Load it exactly as the worker host would: no window, no document.
 const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };

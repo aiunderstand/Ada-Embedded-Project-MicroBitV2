@@ -137,7 +137,7 @@ jobs:
           test -z "$(git -C Code/libs/Ada_Drivers_Library status --porcelain -uall)"
 
   examples:
-    name: All 43 projects build
+    name: Every project builds
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
     runs-on: ubuntu-24.04
     # Runs in the prebuilt toolchain image, so there is nothing to install and a
