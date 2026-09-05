@@ -8,20 +8,32 @@ Tested on Windows 11, Ubuntu 22.04+, and macOS 15+ (Intel and Apple Silicon).
 
 ---
 
-## 1. Install four things
+## 1. What you need first
 
-| | Where |
-|---|---|
-| **VS Code** | <https://code.visualstudio.com/download> |
-| **Python 3.12+** | <https://www.python.org/downloads/> |
-| **Git** | <https://git-scm.com/downloads> or [GitHub Desktop](https://github.com/apps/desktop) |
-| **Alire 2.1+** | <https://alire.ada.dev/> |
+Only two things, and you probably have one of them already:
+
+| | | |
+|---|---|---|
+| **Python 3.12+** | required | <https://www.python.org/downloads/> |
+| **Git** | required, to fetch the code | usually already installed — see below |
 
 > **Windows:** when installing Python, tick **"Add python.exe to PATH"** on the
 > first screen. Do not use the Microsoft Store version — it is sandboxed and the
 > build tools cannot see it.
 
-You do **not** need to install a compiler. Alire does that in step 3.
+**Git** is already present on most machines: macOS ships it with the Xcode
+Command Line Tools (`xcode-select --install` if not), and most Linux
+installations include it. On Windows the setup command installs it for you with
+`winget` if it is missing.
+
+**Everything else is handled for you.** The setup command in step 3 installs the
+Ada compiler, the build system and the flashing tool. You do not need to find,
+choose or configure any of them.
+
+**VS Code is optional.** `tools/mb.py` builds and flashes from a terminal, so you
+can use any editor. Install VS Code if you want Ada syntax and error checking,
+one-key build, and breakpoint debugging with F5 — the setup command installs it
+on Windows if it is missing, and tells you where to get it otherwise.
 
 ## 2. Get the code
 

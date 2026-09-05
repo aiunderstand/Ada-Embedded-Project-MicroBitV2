@@ -695,6 +695,78 @@ def _install_alr() -> bool:
     return False
 
 
+def _winget_install(pkg_id: str, label: str) -> bool:
+    """Install a package with winget, user scope so it needs no administrator."""
+    info(f"installing {label} with winget")
+    rc = run(["winget", "install", "--id", pkg_id, "-e", "--source", "winget",
+              "--scope", "user", "--accept-package-agreements",
+              "--accept-source-agreements"], quiet=True)
+    return rc == 0
+
+
+def _check_tools(args) -> bool:
+    """Report on git and VS Code, installing them where that is safe.
+
+    Only Python is a hard requirement: it runs this script. git is needed to
+    obtain the code, and VS Code is optional -- mb.py builds and flashes from a
+    terminal, so VS Code matters for editing, F5 debugging and Ada language
+    support, not for producing firmware.
+
+    Automatic installation happens only where it needs neither administrator
+    rights nor a package manager the machine may not have. That means winget on
+    Windows; elsewhere the exact command is printed instead of being run, because
+    silently invoking sudo or installing Homebrew on someone's machine is not
+    this script's business.
+    """
+    ok = True
+
+    if shutil.which("git"):
+        rc, out = capture(["git", "--version"])
+        print(f"  OK       {_version_line(out) or 'git'}")
+    elif os.name == "nt" and shutil.which("winget") and not args.no_install_tools:
+        if _winget_install("Git.Git", "Git"):
+            print("  OK       git installed -- reopen your terminal afterwards")
+        else:
+            print("  MISSING  git -- winget install --id Git.Git -e")
+            ok = False
+    else:
+        print("  MISSING  git")
+        if sys.platform == "darwin":
+            print("           install it with:  xcode-select --install")
+        elif sys.platform.startswith("linux"):
+            print("           install it with:  sudo apt install git")
+        else:
+            print("           install it from:  https://git-scm.com/downloads")
+        ok = False
+
+    # VS Code is optional; never fail setup over it.
+    #
+    # Look for the application as well as the "code" command: on macOS that
+    # command only exists after running "Shell Command: Install 'code' command in
+    # PATH", so checking PATH alone reports a false negative for most installs.
+    vscode_paths = [
+        Path("/Applications/Visual Studio Code.app"),
+        Path.home() / "Applications/Visual Studio Code.app",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Microsoft VS Code/Code.exe",
+        Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft VS Code/Code.exe",
+        Path("/usr/share/code/code"),
+        Path("/snap/bin/code"),
+    ]
+    if shutil.which("code") or any(v.exists() for v in vscode_paths if str(v) not in ("", ".")):
+        print("  OK       VS Code")
+    elif os.name == "nt" and shutil.which("winget") and not args.no_install_tools:
+        if _winget_install("Microsoft.VisualStudioCode", "VS Code"):
+            print("  OK       VS Code installed")
+        else:
+            print("  note     VS Code not installed (optional) -- "
+                  "winget install --id Microsoft.VisualStudioCode -e")
+    else:
+        print("  note     VS Code not found (optional -- you can build without it)")
+        print("           https://code.visualstudio.com/download")
+
+    return ok
+
+
 def cmd_setup(args) -> int:
     """One command that makes a fresh machine ready to build.
 
@@ -710,11 +782,10 @@ def cmd_setup(args) -> int:
         die(f"Python 3.9+ required, found {v.major}.{v.minor}")
     print(f"  OK       python {v.major}.{v.minor}.{v.micro}")
 
-    # 2. git, long paths, submodule ---------------------------------------
-    if not shutil.which("git"):
-        print("  MISSING  git -- install it from https://git-scm.com/downloads")
+    # 2. git and VS Code ---------------------------------------------------
+    if not _check_tools(args):
+        print("\n  git is needed to fetch the drivers library. Install it and run this again.")
         return 1
-    print("  OK       git")
 
     if os.name == "nt":
         # The drivers library carries a bundled Unity project whose paths exceed
@@ -890,6 +961,8 @@ def main() -> int:
                    help="skip pyocd; flash from the browser instead")
     p.add_argument("--force", action="store_true",
                    help="reinstall the toolchain even if one is present")
+    p.add_argument("--no-install-tools", action="store_true",
+                   help="never install git or VS Code, only report them")
     p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("doctor", help="check the toolchain")
