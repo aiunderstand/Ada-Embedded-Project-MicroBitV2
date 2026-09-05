@@ -117,6 +117,15 @@ Right-click **`build/main.hex`** in the Explorer, choose **Download**, and drop
 it onto <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>. That
 page also has ready-built examples for checking your board and cable.
 
+## 4½. Try one of the examples
+
+The drivers library ships 46 example programs. Press **Ctrl+Shift+B**, pick
+**Choose project…**, and choose one — say `ravenscar/buttons`. That builds it
+and *remembers* it: from then on **Ctrl+Alt+F** builds and flashes that example,
+and the message after the flash names it. To go back to your own program,
+choose **template**. (*Build the file I'm looking at* does the same for whatever
+example's `main.adb` is open in the editor.)
+
 ## 5. Commit your work
 
 Codespaces are not backups. Commit whenever you finish something:

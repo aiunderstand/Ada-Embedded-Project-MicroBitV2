@@ -159,6 +159,20 @@ jobs:
       - name: Build every project
         run: python3 tools/mb.py build --all
 
+      # "Choose project..." must stick: a plain build (what Ctrl+Alt+F runs)
+      # rebuilds the chosen example, and choosing the template returns.
+      - name: A chosen project is remembered by the next plain build
+        # Inside the container the default shell is sh, which has no pipefail.
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/mb.py build --use ravenscar/buttons
+          python3 tools/mb.py build
+          grep -qx 'ravenscar/buttons' build/last-project.txt
+          python3 tools/mb.py build --use template
+          python3 tools/mb.py build
+          grep -qx 'template' build/last-project.txt
+
   prove:
     name: SPARK examples prove clean
     if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'

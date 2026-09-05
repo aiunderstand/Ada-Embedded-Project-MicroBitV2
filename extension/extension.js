@@ -236,6 +236,17 @@ async function hexExists() {
   }
 }
 
+async function readTextIfPresent(relPath) {
+  const root = workspaceRoot();
+  if (!root) return "";
+  try {
+    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...relPath.split("/")));
+    return new TextDecoder().decode(bytes).trim();
+  } catch {
+    return "";
+  }
+}
+
 async function readHex() {
   const root = workspaceRoot();
   if (!root) {
@@ -417,9 +428,13 @@ async function cmdFlash() {
         });
       }
     );
-    log(`Flashed ${HEX_PATH}.`);
+    // mb.py records which project it staged; with "Choose project..." in
+    // play, the student needs to see what actually went to the board.
+    const project = await readTextIfPresent("build/last-project.txt");
+    const what = project ? `${HEX_PATH} (${project})` : HEX_PATH;
+    log(`Flashed ${what}.`);
     openSerialConsole();
-    vscode.window.showInformationMessage("micro:bit flashed.");
+    vscode.window.showInformationMessage(`micro:bit flashed: ${project || "build/main.hex"}.`);
   } catch (err) {
     // The stack goes to the output channel: "NotSupported" alone says nothing
     // about which VS Code API refused, and that is the question in a web host.

@@ -179,7 +179,9 @@ under the **Actions** tab.
 You do not need to open a different folder. Press **Ctrl+Shift+P**, choose
 *Tasks: Run Task*, then:
 
-* **Choose project…** — pick any of the 46 examples from a list.
+* **Choose project…** — pick any of the 46 examples from a list. The choice
+  sticks: **Build & Flash** and plain **Build** then use it, until you choose
+  **template** again.
 * **Build the file I'm looking at** — builds whichever example the open file
   belongs to.
 
