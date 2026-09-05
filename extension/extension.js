@@ -92,21 +92,34 @@ async function ensureConnected() {
   }
 
   // Already-authorised devices need no prompt.
-  let devices = await navigator.usb.getDevices();
-  if (!devices.some((d) => d.vendorId === MICROBIT_VID)) {
+  const find = (list) => list.find((d) => d.vendorId === MICROBIT_VID);
+  let device = find(await navigator.usb.getDevices());
+  if (!device) {
     log("Asking you to choose the micro:bit...");
     await vscode.commands.executeCommand(
       "workbench.experimental.requestUsbDevice",
       { filters: [{ vendorId: MICROBIT_VID }] }
     );
-    devices = await navigator.usb.getDevices();
+    device = find(await navigator.usb.getDevices());
   }
-  if (!devices.some((d) => d.vendorId === MICROBIT_VID)) {
+  if (!device) {
     throw new Error("No micro:bit was selected.");
   }
 
   // pauseOnHidden touches window/document, which do not exist in a worker.
-  const usb = createUSBConnection({ pauseOnHidden: false });
+  //
+  // Left to itself the library asks for a device with
+  // navigator.usb.requestDevice(), which exists on a page and not in a worker
+  // ("navigator.usb.requestDevice is not a function", from a real Codespace).
+  // The workbench has just authorised one, so hand it over -- that path also
+  // reports a failed connection instead of swallowing it and asking again --
+  // and route the library's own log into the output channel.
+  const usb = createUSBConnection({
+    pauseOnHidden: false,
+    deviceSelectionMode: "UseAnyAllowed",
+    logging: { log: (m) => log(`  [usb] ${m}`), event: () => {} },
+  });
+  usb.usbDevice = device;
   usb.addEventListener("status", ({ status: s }) => {
     log(`connection: ${s}`);
     setStatus(s === "Connected" ? "Flash micro:bit (connected)" : "Flash micro:bit", false);

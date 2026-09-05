@@ -2,8 +2,8 @@
   "name": "microbit-flasher",
   "displayName": "micro:bit v2 Flasher",
   "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
-  "version": "0.1.0",
-  "publisher": "aiunderstand",
+  "version": "0.1.1",
+  "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
     "type": "git",

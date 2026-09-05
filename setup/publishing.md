@@ -1,6 +1,7 @@
 # Publishing the flasher extension (lecturer only)
 
-Students install **micro:bit v2 Flasher** from the Marketplace, in the browser.
+Students install **micro:bit v2 Flasher** (`AIUnderstand.microbit-flasher`) from the
+Marketplace, in the browser.
 That is the only place a web extension can run in a Codespace — one installed
 into the Codespace itself never starts (microsoft/vscode#144513). Publishing is
 a one-time setup, then one click per release.
@@ -13,18 +14,22 @@ a one-time setup, then one click per release.
    Token*: Organization **All accessible organizations**, Scopes → *Custom
    defined* → **Marketplace: Manage**. Copy the token; it is shown once.
 2. **Publisher.** At <https://marketplace.visualstudio.com/manage>, signed in
-   with the same account, *Create publisher* with ID **`aiunderstand`** (the
-   extension is published as `aiunderstand.microbit-flasher`; the ID is in
+   with the same account, *Create publisher* with ID **`AIUnderstand`** (the
+   extension is published as `AIUnderstand.microbit-flasher`; the ID is in
    `extension/package.json`).
 3. **Repository secret.** In this repository: Settings → Secrets and variables →
    Actions → *New repository secret*: name `VSCE_PAT`, value the token.
 
 ## Each release
 
-Actions → **Publish the flasher extension** → *Run workflow*. It assembles the
-folder with `python3 tools/mb.py extension`, packages it with `vsce`, uploads the
-`.vsix` as an artifact, and publishes version `0.1.<run number>` — the Marketplace
-needs each version to be higher than the last, and the run number is.
+Either upload by hand — `python3 tools/mb.py extension --out build/extension`,
+then `cd build/extension && npx @vscode/vsce package --no-dependencies`, bump
+`version` in `extension/package.json` first (these are the `0.1.x` releases) —
+or let the workflow do it: Actions → **Publish the flasher extension** → *Run
+workflow*. It assembles the folder, packages it with `vsce`, uploads the
+`.vsix` as an artifact, and publishes `0.2.<run number>`. The Marketplace needs
+each version to be higher than the last; the run number is monotonic, and
+`0.2.x` can never collide with a hand-made `0.1.x`.
 
 The Marketplace takes a few minutes to list a new version. Students' browsers
 update the extension on their own.

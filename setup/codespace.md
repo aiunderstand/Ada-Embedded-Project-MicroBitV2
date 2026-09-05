@@ -68,8 +68,9 @@ No download, no file to drag.
 > *browser*, on your own laptop, where the board is actually plugged in.
 
 **Once per Codespace, install the flasher in your browser.** Open the
-Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), search for
-`micro:bit v2 Flasher` — the one by **aiunderstand** — and click **Install**.
+Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), type
+`AIUnderstand.microbit-flasher` in its search box, and click **Install** on
+*micro:bit v2 Flasher*.
 **Flash micro:bit** appears in the status bar a few seconds later. (If VS Code
 offers a choice, pick *Install in Browser*: the Codespace itself cannot run it.)
 

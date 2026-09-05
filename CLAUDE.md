@@ -160,7 +160,7 @@ A Codespace has **no USB**. Three consequences:
    device access does not.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
-   `aiunderstand.microbit-flasher` — never into the Codespace (see the trap
+   `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
    above). `setup/publishing.md` is the lecturer's publishing procedure.
 
 `python3 tools/mb.py extension` assembles the publishable folder (bundling the

@@ -22,9 +22,9 @@ const pkg = JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8"));
 const srcPkg = JSON.parse(fs.readFileSync(path.join(root, "extension/package.json"), "utf8"));
 
 // ------------------------------------------------------------- manifest
-// The Marketplace identity: students install "aiunderstand.microbit-flasher"
+// The Marketplace identity: students install "AIUnderstand.microbit-flasher"
 // in the browser. It is the lecturer's work, so it carries his publisher.
-check(pkg.publisher === "aiunderstand", "publisher must be aiunderstand");
+check(pkg.publisher === "AIUnderstand", "publisher must be AIUnderstand, exactly as created on the Marketplace");
 check(pkg.name === "microbit-flasher", "name must be microbit-flasher");
 check(pkg.browser && !pkg.main,
       "a browser entry and no main: the only host with USB is the browser's");
@@ -112,6 +112,56 @@ try {
 }
 check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
+
+// ------------------------------------------------------ the flash, in a worker
+// A worker's navigator.usb has getDevices() but no requestDevice(). The first
+// real flash from a Codespace died on exactly that, inside the bundled library,
+// after VS Code's own picker had already authorised the board. So: with an
+// authorised device present, the flow must reach that device and must never
+// call requestDevice; and with none, it must use the workbench picker.
+const fakeDevice = (opened) => ({
+  vendorId: 0x0d28, productId: 0x0204, manufacturerName: "Arm", productName: "DAPLink CMSIS-DAP",
+  serialNumber: "0000", opened: false, configurations: [],
+  open: async () => { opened.push(1); throw new Error("reached the fake device"); },
+  close: async () => {}, addEventListener() {}, removeEventListener() {},
+});
+async function runFlash({ authorised }) {
+  const reached = [], errors = [], commands = [];
+  let handler;
+  const vs = {
+    ...vscode,
+    window: { ...vscode.window, showErrorMessage: (m) => { errors.push(m); },
+              createOutputChannel: () => chan, createStatusBarItem: () => bar },
+    commands: {
+      registerCommand: (id, fn) => { if (id === "microbit.flash") handler = fn; return { dispose() {} }; },
+      executeCommand: async (id) => { commands.push(id); authorised = true; },
+    },
+    workspace: { workspaceFolders: [{ uri: {} }],
+                 fs: { stat: async () => ({}), readFile: async () => new TextEncoder().encode(":10000000783A0020091E0100541E0100541E010010\n:00000001FF\n") } },
+  };
+  const nav = { usb: { getDevices: async () => (authorised ? [fakeDevice(reached)] : []),
+                       addEventListener() {}, removeEventListener() {} } };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", "navigator", src)(
+    (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
+  m.exports.activate({ subscriptions: [] });
+  await handler();
+  return { reached: reached.length, errors, commands };
+}
+// activate() also reconnects to an authorised device on its own, so the device
+// is opened twice here: once at activation, once by the flash.
+const withDevice = await runFlash({ authorised: true });
+check(withDevice.reached >= 1, "an authorised device must be handed to the library and opened");
+check(!withDevice.commands.includes("workbench.experimental.requestUsbDevice"),
+      "no picker when a device is already authorised");
+check(!withDevice.errors.some((e) => /requestDevice/.test(e)),
+      `the library must never call navigator.usb.requestDevice in a worker (got: ${withDevice.errors})`);
+check(withDevice.errors.some((e) => /reached the fake device/.test(e)),
+      "a failed connection must surface the device's own error, not be swallowed");
+const withoutDevice = await runFlash({ authorised: false });
+check(withoutDevice.commands.includes("workbench.experimental.requestUsbDevice"),
+      "with no authorised device, the workbench picker must be used");
+check(withoutDevice.reached >= 1, "the device the picker authorised must then be used");
 
 // -------------------------------------------------------------- delivery
 // An extension installed *into* a Codespace never runs in the browser client

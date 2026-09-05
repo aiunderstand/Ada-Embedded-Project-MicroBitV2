@@ -1,5 +1,5 @@
 # Publishes the VS Code web extension to the Marketplace as
-# aiunderstand.microbit-flasher. Manual, by the lecturer, from this repository
+# AIUnderstand.microbit-flasher. Manual, by the lecturer, from this repository
 # only: a template instance must never publish.
 #
 # Why the Marketplace: a web extension runs in a Codespace only when it is
@@ -28,10 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Marketplace needs every release to be higher than the last;
-      # the run number is monotonic and needs no commit.
+      # The Marketplace needs every release to be higher than the last; the run
+      # number is monotonic and needs no commit. Versions uploaded by hand from
+      # extension/package.json are 0.1.x, so 0.2.<run> can never collide.
       - name: Assemble the extension folder
-        run: python3 tools/mb.py extension --out build/extension --version "0.1.${{ github.run_number }}"
+        run: python3 tools/mb.py extension --out build/extension --version "0.2.${{ github.run_number }}"
 
       - name: Package
         run: |
@@ -41,7 +42,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: microbit-flasher-0.1.${{ github.run_number }}
+          name: microbit-flasher-0.2.${{ github.run_number }}
           path: ${{ runner.temp }}/microbit-flasher.vsix
 
       - name: Publish

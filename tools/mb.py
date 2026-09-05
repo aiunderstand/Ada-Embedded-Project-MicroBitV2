@@ -597,7 +597,7 @@ def cmd_extension(args) -> int:
     microsoft/vscode#144513, open since 2022 (the symptom is "Activating..."
     forever, and a 404 on extension.js in the Network tab). Web extensions
     work in a Codespace when they are installed *in the browser* from the
-    Marketplace -- this one as aiunderstand.microbit-flasher, published by the
+    Marketplace -- this one as AIUnderstand.microbit-flasher, published by the
     publish-extension workflow with vsce from this folder. Nothing else can
     deliver it: the Codespaces page policy admits only the Marketplace CDNs,
     so GitHub Pages and "Install Extension from Location..." are blocked.
