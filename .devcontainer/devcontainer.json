@@ -58,16 +58,6 @@
     // Tells the student straight away whether their environment is usable.
     "postCreateCommand": "python3 tools/mb.py doctor",
 
-    // Build and install the WebUSB flasher extension on every attach.
-    //
-    // It is a *web* extension, so VS Code loads it into the web extension host
-    // running in the browser -- on the student's own machine, where the board is
-    // plugged in -- rather than on this remote container, which has no USB. That
-    // is what makes flashing from a Codespace possible at all.
-    //
-    // Packaged by mb.py with Python's zipfile, because a .vsix is just a zip and
-    // there is no node, npm or vsce in this image.
-    "postAttachCommand": "python3 tools/mb.py extension --install",
 
     "customizations": {
         "vscode": {

@@ -229,6 +229,16 @@ jobs:
       - name: VS Code extension regression test
         run: node tools/test_extension.mjs
 
+      # vsce is what publishes to the Marketplace; running its packaging here
+      # means a release can only fail on credentials, never on the manifest.
+      - name: The extension folder must package with vsce
+        run: |
+          set -euo pipefail
+          python3 tools/mb.py extension --out build/extension
+          cd build/extension
+          npx --yes @vscode/vsce@latest package --no-dependencies --out "$RUNNER_TEMP/microbit-flasher.vsix"
+          ls -la "$RUNNER_TEMP/microbit-flasher.vsix"
+
       - name: Tasks must stay platform agnostic
         run: |
           set -euo pipefail

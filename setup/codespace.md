@@ -64,10 +64,16 @@ mb: firmware: build/main.elf, build/main.hex, build/main.bin
 No download, no file to drag.
 
 > A Codespace runs in a data centre and has **no USB port**. The flasher works
-> because it is a VS Code **web extension**: VS Code loads it into your
+> because it is a VS Code **web extension**: VS Code runs it in your
 > *browser*, on your own laptop, where the board is actually plugged in.
 
-The extension is built and installed automatically when the Codespace starts.
+**Once per Codespace, install the flasher in your browser.** Open the
+Extensions view (**Ctrl+Shift+X**, **Cmd+Shift+X** on a Mac), search for
+`micro:bit v2 Flasher` — the one by **aiunderstand** — and click **Install**.
+**Flash micro:bit** appears in the status bar a few seconds later. (If VS Code
+offers a choice, pick *Install in Browser*: the Codespace itself cannot run it.)
+
+Then, every time:
 
 1. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
 2. Click **Flash micro:bit** in the status bar, at the bottom of the window.
@@ -132,6 +138,14 @@ Restricted Mode, which disables the build tasks.
 and use Chrome, Edge or Opera. On Linux see the note on the flasher page about
 the udev rule.
 
-**Ctrl+Alt+F says `command 'microbit.flash' not found`.** The flasher extension
-was updated while this window was open, and VS Code keeps the old one until you
-reload: press **Ctrl+Shift+P**, type `Reload Window`, and run it.
+**The flasher shows "Activating…" forever, or Ctrl+Alt+F says
+`command 'microbit.flash' not found`.** The extension ended up installed *in the
+Codespace* instead of in your browser, and there it can never start — a
+long-standing VS Code limitation, not something you did. In the Extensions
+view, find *micro:bit v2 Flasher*; if it says it is installed in the Codespace,
+uninstall it there and use **Install in Browser** instead.
+
+**Flash micro:bit never appears after installing.** Use Chrome, Edge or Opera —
+Safari and Firefox have no WebUSB. Then check *Show Running Extensions* in the
+command palette: the flasher should be listed under **web worker** with an
+activation time.

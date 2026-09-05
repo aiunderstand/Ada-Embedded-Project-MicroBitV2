@@ -33,7 +33,7 @@ python3 tools/mb.py build [--use ID | --use-dir DIR | --all]
 python3 tools/mb.py flash | erase
 python3 tools/mb.py prove --all-spark --mode=prove --level=1
 python3 tools/mb.py serve          # serve the flasher with the current build
-python3 tools/mb.py extension --install
+python3 tools/mb.py extension [--out DIR] [--version V]   # the web extension, as a folder
 python3 tools/mb.py gallery --out site/firmware
 ```
 
@@ -124,26 +124,18 @@ as you typed it finds nothing. Read the real tables out of a running VS Code:
 `Preferences: Open Default Keyboard Shortcuts (JSON)`, or the `verify-ui` skill's
 test-web recipe with a spoofed user agent for Windows and Linux.
 
-**VS Code will not hot-swap a running extension.** `canRemoveExtension` is
-false once activation has started, so reinstalling the same version into a
-live window leaves it with a stale mix -- the new manifest's keybinding, no
-command handler: `command 'microbit.flash' not found`. `postAttachCommand`
-runs on *every* attach -- and a window reload *is* an attach -- so `mb.py
-extension --install` compares the installed copy with what it would install and
-touches nothing when identical; when it does replace one it says to run
-`Developer: Reload Window`. VS Code appends `__metadata` to the installed
-`package.json`, so that comparison is JSON-with-the-key-dropped, not bytes.
-
-**The extension's version is derived from its content.** VS Code Server serves
-anything under its extensions folder with `Cache-Control: public,
-max-age=31536000` (`remoteExtensionHostAgentServer.ts`, when built -- i.e. in
-every Codespace), at a URL that contains only `<publisher>.<name>-<version>`.
-Reinstall changed code under the same version and, after a reload, the manifest
-arrives fresh over RPC while the worker's `extension.js` comes from the browser
-cache: a year-old file with a new keybinding pointing at it. So `mb.py
-extension` sets the patch number from a hash of the package; `extension/
-package.json` keeps `0.1.0` and only its major.minor are used. Do not "fix" the
-odd-looking version.
+**Never install the extension into the Codespace, and only the Marketplace can
+deliver it.** Installed into the Codespace, it cannot run in the browser client:
+the web worker host lives on another origin (`assets.github.dev`), its fetch of
+`extension.js` bypasses GitHub's routing for the page and gets a 404, and the
+worker logs `Activating extension … failed: Error:` with nothing after it
+(HTTP/2 has no status text) — microsoft/vscode **#144513**, open since 2022.
+Served from anywhere else (GitHub Pages, *Install Extension from Location*),
+the page's `connect-src` blocks it: the Codespaces allow-list has the
+Marketplace CDNs and not `github.io`. A day went into the attach-time `.vsix`
+install — hot-swap rules, a one-year cache, `__metadata`, `.obsolete`, file
+modes — all real, all beside the point. `code serve-web` shows neither: its
+worker is same-origin and its policy allows any `https:`.
 
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
 worker's `ExtHostTask` only accepts `CustomExecution` tasks; a shell or process
@@ -167,12 +159,18 @@ A Codespace has **no USB**. Three consequences:
    `allow="usb"`. Rendering-only integrations (e.g. Surfer) work in a webview;
    device access does not.
 
+4. The extension must be **installed in the browser, from the Marketplace** —
+   `aiunderstand.microbit-flasher` — never into the Codespace (see the trap
+   above). `setup/publishing.md` is the lecturer's publishing procedure.
+
+`python3 tools/mb.py extension` assembles the publishable folder (bundling the
+vendored library into `extension.js`); `ada.yml` proves it packages with `vsce`
+on every push, and `publish-extension.yml` publishes it by hand as
+`0.1.<run number>`. **Do not add node/npm to the container image** for any of
+this; the runners have node, the container does not need it.
+
 Port forwarding (`mb.py serve`) exists and works locally, but was unreliable in a
 real Codespace. Keep it as a fallback, not the documented path.
-
-The extension is packaged by `mb.py` with Python's `zipfile` — a `.vsix` is a zip
-with a manifest. **Do not add node/npm to the image** for this; it would cost
-~120 MB and an `npm ci` on every attach.
 
 ## CI
 

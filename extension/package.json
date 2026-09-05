@@ -3,9 +3,21 @@
   "displayName": "micro:bit v2 Flasher",
   "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
   "version": "0.1.0",
-  "publisher": "usn",
-  "private": true,
+  "publisher": "aiunderstand",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2.git"
+  },
+  "homepage": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2#readme",
+  "keywords": [
+    "micro:bit",
+    "microbit",
+    "webusb",
+    "ada",
+    "codespaces",
+    "flash"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
