@@ -130,7 +130,25 @@ that works there is *Show Running Extensions* → the **Extension Host (Worker)*
 channel → the Network tab filtered on `extension.js` → the Console for
 `Content Security Policy`.
 
-## 6. Counting the steps
+## 6. The Serial view's own script
+
+The view is HTML built inside `extension.js`; its script has only ever run in
+a student's browser unless you run it yourself. Extract it through the mock
+host (resolve the view provider with a fake `WebviewView`, keep what it sets
+as `html`), write it to a file, and drive it:
+
+```js
+await page.addInitScript(() => { window.__posted = []; window.acquireVsCodeApi = () => ({ postMessage: (m) => window.__posted.push(m) }); });
+await page.goto('file://' + path);            // a navigation: setContent() skips init scripts
+await page.evaluate(() => window.postMessage({ type: 'status', connected: true }, '*'));
+await page.fill('#in', 'abc'); await page.press('#in', 'Enter');   // must post {type:'send'}, must NOT navigate
+```
+
+Check `#status`, `#out`, `window.__posted`, and `pageerror`. Enter navigating
+the page away means the script never attached its handlers — the symptom of a
+syntax error in it, which is what an interpreted `\n` in the template produces.
+
+## 7. Counting the steps
 
 To judge whether a flow is too cumbersome, count what a student actually does —
 clicks, keystrokes, and dialogs — rather than guessing. Record them, then compare

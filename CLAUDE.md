@@ -118,6 +118,13 @@ remain and the pull is unchanged — the image merely *looks* smaller.
 **`git status` always exits 0.** Cleanliness guards must be
 `test -z "$(git status --porcelain -uall)"`.
 
+**A template literal interprets `\n`.** The Serial view's HTML is a template
+literal in `extension.js`; a `"\n"` meant for the view's own script arrived as
+a real line break inside a string, the script died with a syntax error, and the
+view sat at "Not connected" while the extension posted into it. Write `\\n`
+there, and run the view's script for real: `tools/test_extension.mjs` parses
+it, and the `verify-ui` skill drives the HTML in Chromium.
+
 **Check a new keybinding against VS Code's defaults, per platform.** The
 extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
 as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
