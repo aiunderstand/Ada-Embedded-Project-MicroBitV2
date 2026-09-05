@@ -41,6 +41,17 @@ function workspaceRoot() {
   return folders && folders.length ? folders[0].uri : undefined;
 }
 
+async function hexExists() {
+  const root = workspaceRoot();
+  if (!root) return false;
+  try {
+    await vscode.workspace.fs.stat(vscode.Uri.joinPath(root, ...HEX_PATH.split("/")));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function readHex() {
   const root = workspaceRoot();
   if (!root) {
@@ -98,7 +109,7 @@ async function ensureConnected() {
   const usb = createUSBConnection({ pauseOnHidden: false });
   usb.addEventListener("status", ({ status: s }) => {
     log(`connection: ${s}`);
-    setStatus(s === "Connected" ? "micro:bit connected" : "micro:bit", false);
+    setStatus(s === "Connected" ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
   });
   usb.addEventListener("serialdata", ({ data }) => output.append(data));
   usb.addEventListener("serialreset", () => log("\n--- program restarted ---"));
@@ -113,17 +124,51 @@ async function cmdConnect() {
     setStatus("connecting", true);
     await ensureConnected();
     log("Connected. Serial output appears below.");
-    setStatus("micro:bit connected", false);
+    setStatus("Flash micro:bit (connected)", false);
   } catch (err) {
-    setStatus("micro:bit", false);
+    setStatus("Flash micro:bit", false);
     log(`Error: ${err.message}`);
     vscode.window.showErrorMessage(`micro:bit: ${err.message}`);
   }
 }
 
+/** Run the workspace "Build" task and wait for it. */
+async function runBuildTask() {
+  let task;
+  try {
+    const all = await vscode.tasks.fetchTasks();
+    task = all.find((t) => t.name === "Build");
+  } catch {
+    return false;
+  }
+  if (!task) {
+    return false; // no task to run; fall back to whatever is already built
+  }
+  log("Building...");
+  setStatus("building", true);
+  const exec = await vscode.tasks.executeTask(task);
+  return new Promise((resolve) => {
+    const sub = vscode.tasks.onDidEndTaskProcess((e) => {
+      if (e.execution === exec) {
+        sub.dispose();
+        resolve(e.exitCode === 0);
+      }
+    });
+  });
+}
+
 async function cmdFlash() {
   output.show(true);
   try {
+    // Build first, so one action does the whole job and a stale hex can never
+    // be flashed silently. Previously this failed with "build first" if you
+    // forgot, and the status-bar button could flash yesterday's firmware.
+    const built = await runBuildTask();
+    if (built === false && !(await hexExists())) {
+      throw new Error(
+        "Nothing to flash. Build first: Ctrl+Shift+B, or python3 tools/mb.py build"
+      );
+    }
     const hex = await readHex();
     const usb = await ensureConnected();
     await vscode.window.withProgress(
@@ -142,6 +187,7 @@ async function cmdFlash() {
         });
       }
     );
+    setStatus("Flash micro:bit (connected)", false);
     log(`Flashed ${HEX_PATH}.`);
     vscode.window.showInformationMessage("micro:bit flashed.");
   } catch (err) {
@@ -171,8 +217,8 @@ function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit");
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = "microbit.flash";
-  status.tooltip = "Flash build/main.hex to the micro:bit";
-  setStatus("micro:bit", false);
+  status.tooltip = "Build and flash to the micro:bit";
+  setStatus("Flash micro:bit", false);
 
   context.subscriptions.push(
     output,
@@ -181,6 +227,23 @@ function activate(context) {
     vscode.commands.registerCommand("microbit.flash", cmdFlash),
     vscode.commands.registerCommand("microbit.status", cmdStatus)
   );
+
+  // Reconnect silently if the board was authorised earlier in this browser, so
+  // the device picker appears once ever rather than once per session, and serial
+  // output starts flowing without the student doing anything.
+  (async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.usb) {
+        const devices = await navigator.usb.getDevices();
+        if (devices.some((d) => d.vendorId === MICROBIT_VID)) {
+          log("Board already authorised; connecting...");
+          await ensureConnected();
+        }
+      }
+    } catch (err) {
+      log(`(could not reconnect automatically: ${err.message})`);
+    }
+  })();
 
   log("micro:bit flasher ready.");
   if (typeof navigator === "undefined" || !navigator.usb) {

@@ -6,10 +6,16 @@
   "publisher": "usn",
   "private": true,
   "license": "MIT",
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "browser": "./extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {
@@ -19,13 +25,20 @@
       },
       {
         "command": "microbit.flash",
-        "title": "micro:bit: Flash build/main.hex",
+        "title": "micro:bit: Build and flash",
         "category": "micro:bit"
       },
       {
         "command": "microbit.status",
         "title": "micro:bit: Show connection status",
         "category": "micro:bit"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "microbit.flash",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f"
       }
     ]
   }
