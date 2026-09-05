@@ -695,6 +695,123 @@ def _install_alr() -> bool:
     return False
 
 
+def _ask(args, question: str) -> bool:
+    """Ask before installing anything.
+
+    Detection can be wrong -- a tool may be installed somewhere this script does
+    not look -- so it must never install over the top of something silently.
+    """
+    if args.no_install_tools:
+        return False
+    if args.yes:
+        return True
+    if not sys.stdin.isatty():
+        print("           (not a terminal: re-run with --yes to install automatically)")
+        return False
+    try:
+        return input(f"           {question} [Y/n] ").strip().lower() in ("", "y", "yes")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def _install(label: str, cmd: list[str], note: str = "") -> bool:
+    info(f"installing {label}: {' '.join(cmd)}")
+    if note:
+        print(f"           {note}")
+    return run(cmd, quiet=True) == 0
+
+
+def _install_git(args) -> bool:
+    if os.name == "nt" and shutil.which("winget"):
+        return _install("git", ["winget", "install", "--id", "Git.Git", "-e",
+                                "--source", "winget", "--scope", "user",
+                                "--accept-package-agreements",
+                                "--accept-source-agreements"])
+    if sys.platform == "darwin":
+        # Apple ships git with the Command Line Tools. This opens a GUI prompt.
+        return _install("the Xcode Command Line Tools", ["xcode-select", "--install"],
+                        "accept the dialog that appears, then run setup again")
+    if sys.platform.startswith("linux") and shutil.which("apt-get"):
+        return _install("git", ["sudo", "apt-get", "install", "-y", "git"],
+                        "sudo will ask for your password")
+    return False
+
+
+def _install_vscode(args) -> bool:
+    if os.name == "nt" and shutil.which("winget"):
+        return _install("VS Code", ["winget", "install", "--id",
+                                    "Microsoft.VisualStudioCode", "-e",
+                                    "--source", "winget", "--scope", "user",
+                                    "--accept-package-agreements",
+                                    "--accept-source-agreements"])
+    if sys.platform == "darwin" and shutil.which("brew"):
+        return _install("VS Code", ["brew", "install", "--cask",
+                                    "visual-studio-code"])
+    if sys.platform.startswith("linux") and shutil.which("snap"):
+        return _install("VS Code", ["sudo", "snap", "install", "code", "--classic"],
+                        "sudo will ask for your password")
+    return False
+
+
+def _find_vscode() -> bool:
+    """Is VS Code installed?
+
+    Checks for the application as well as the "code" command: on macOS that
+    command exists only after running "Shell Command: Install 'code' command in
+    PATH", so testing PATH alone reports a false negative on most installs.
+    """
+    if shutil.which("code") or shutil.which("code-insiders"):
+        return True
+    candidates = [
+        Path("/Applications/Visual Studio Code.app"),
+        Path.home() / "Applications/Visual Studio Code.app",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Microsoft VS Code/Code.exe",
+        Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft VS Code/Code.exe",
+        Path("/usr/share/code/code"),
+        Path("/snap/bin/code"),
+        Path("/var/lib/flatpak/exports/bin/com.visualstudio.code"),
+    ]
+    return any(str(c) not in ("", ".") and c.exists() for c in candidates)
+
+
+def _check_tools(args) -> tuple[bool, bool]:
+    """(git_ok, vscode_ok). Both are required; VS Code is how the course is taught."""
+    # --- git ---
+    if shutil.which("git"):
+        rc, out = capture(["git", "--version"])
+        print(f"  OK       {_version_line(out) or 'git'}")
+        git_ok = True
+    else:
+        print("  MISSING  git -- needed to fetch the drivers library")
+        git_ok = False
+        if _ask(args, "Install git now?"):
+            git_ok = _install_git(args) and bool(shutil.which("git"))
+        if not git_ok:
+            if os.name == "nt":
+                print("           winget install --id Git.Git -e")
+            elif sys.platform == "darwin":
+                print("           xcode-select --install")
+            else:
+                print("           sudo apt install git")
+
+    # --- VS Code ---
+    if _find_vscode():
+        print("  OK       VS Code")
+        code_ok = True
+    else:
+        print("  MISSING  VS Code -- used for editing, building and debugging")
+        code_ok = False
+        if _ask(args, "Install VS Code now?"):
+            code_ok = _install_vscode(args) or _find_vscode()
+        if not code_ok:
+            print("           https://code.visualstudio.com/download")
+            print("           (if it is already installed, this check simply did not "
+                  "find it -- carry on)")
+
+    return git_ok, code_ok
+
+
 def cmd_setup(args) -> int:
     """One command that makes a fresh machine ready to build.
 
@@ -710,11 +827,14 @@ def cmd_setup(args) -> int:
         die(f"Python 3.9+ required, found {v.major}.{v.minor}")
     print(f"  OK       python {v.major}.{v.minor}.{v.micro}")
 
-    # 2. git, long paths, submodule ---------------------------------------
-    if not shutil.which("git"):
-        print("  MISSING  git -- install it from https://git-scm.com/downloads")
+    # 2. git and VS Code ---------------------------------------------------
+    git_ok, code_ok = _check_tools(args)
+    if not git_ok:
+        print("\n  git is needed to fetch the drivers library. Install it and run "
+              "setup again.")
         return 1
-    print("  OK       git")
+    if not code_ok:
+        ok = False
 
     if os.name == "nt":
         # The drivers library carries a bundled Unity project whose paths exceed
@@ -786,6 +906,8 @@ def cmd_setup(args) -> int:
     print()
     if not ok:
         print("Setup finished with problems. See the messages above.")
+        if not code_ok:
+            print("VS Code is missing: install it, then this project is ready to use.")
         return 1
     print("Setup complete. Checking:\n")
     cmd_doctor(args)
@@ -890,6 +1012,10 @@ def main() -> int:
                    help="skip pyocd; flash from the browser instead")
     p.add_argument("--force", action="store_true",
                    help="reinstall the toolchain even if one is present")
+    p.add_argument("--no-install-tools", action="store_true",
+                   help="never install git or VS Code, only report them")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="answer yes to install prompts (for unattended runs)")
     p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("doctor", help="check the toolchain")

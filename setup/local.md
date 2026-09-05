@@ -8,20 +8,33 @@ Tested on Windows 11, Ubuntu 22.04+, and macOS 15+ (Intel and Apple Silicon).
 
 ---
 
-## 1. Install four things
+## 1. What you need first
 
-| | Where |
+Two things. Everything else is installed for you in step 3.
+
+| | |
 |---|---|
-| **VS Code** | <https://code.visualstudio.com/download> |
 | **Python 3.12+** | <https://www.python.org/downloads/> |
-| **Git** | <https://git-scm.com/downloads> or [GitHub Desktop](https://github.com/apps/desktop) |
-| **Alire 2.1+** | <https://alire.ada.dev/> |
+| **VS Code** | <https://code.visualstudio.com/download> |
 
 > **Windows:** when installing Python, tick **"Add python.exe to PATH"** on the
 > first screen. Do not use the Microsoft Store version — it is sandboxed and the
 > build tools cannot see it.
 
-You do **not** need to install a compiler. Alire does that in step 3.
+**Git** is needed too, but it is already there on most machines: macOS ships it
+with the Xcode Command Line Tools, and most Linux installations include it.
+
+The setup command in step 3 checks for git and VS Code and, if either is
+missing, **asks** before installing it — with `winget` on Windows, `brew` on
+macOS, `apt`/`snap` on Linux. It never installs anything without asking, because
+a tool installed somewhere unusual can be missed by the check.
+
+If it says something is missing that you know you have, just say no and carry
+on.
+
+**Everything else is handled for you.** Step 3 installs the Ada compiler, the
+build system and the flashing tool. You do not need to find, choose or configure
+any of them.
 
 ## 2. Get the code
 
