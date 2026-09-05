@@ -83,13 +83,20 @@ check(!/tasks\.executeTask\s*\(/.test(src),
 check(src.includes('"workbench.action.tasks.runTask"'),
       "the build must run through workbench.action.tasks.runTask");
 
+check((pkg.contributes.commands || []).some((c) => c.command === "microbit.serial"),
+      "a command must open the serial console");
+
 // Load it exactly as the worker host would: no window, no document.
 const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };
 const bar = { show() {}, dispose() {}, set text(_v) {}, get text() { return ""; } };
+class EventEmitter { constructor() { this.listeners = []; this.event = (fn) => { this.listeners.push(fn); return { dispose() {} }; }; } fire(v) { for (const fn of this.listeners) fn(v); } }
+const terminals = [];
 const vscode = {
+  EventEmitter,
   window: { createOutputChannel: () => chan, createStatusBarItem: () => bar,
             showErrorMessage() {}, showInformationMessage() {},
-            withProgress: async (_o, f) => f({ report() {} }) },
+            withProgress: async (_o, f) => f({ report() {} }),
+            createTerminal: (opts) => { const t = { opts, shown: [], show(p) { this.shown.push(p); } }; terminals.push(t); return t; } },
   commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async () => {} },
   tasks: { fetchTasks: async () => [], onDidEndTaskProcess: () => ({ dispose() {} }) },
   StatusBarAlignment: { Left: 1 }, ProgressLocation: { Notification: 15 },
@@ -112,6 +119,37 @@ try {
 }
 check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
+
+// ---------------------------------------------------------- serial console
+// The board's UART arrives as serialdata events; the console is a
+// pseudoterminal. Bytes that arrive before it is open must not be lost, LF
+// must become CR LF for xterm, typing must be echoed (Get does not echo) and
+// sent with CR LF on Enter, and the console must never take focus, or the
+// next Ctrl+Alt+F would type into it instead of flashing.
+const written = [];
+mod.exports._serial.received("boot line\n");                 // before any console
+mod.exports._serial.open();
+check(terminals.length === 1 && terminals[0].opts.name === "micro:bit serial",
+      "opening the console creates a pseudoterminal named micro:bit serial");
+const t0 = terminals[0];
+check(t0.shown[0] === true, "the console must be shown with preserveFocus, so the chord keeps working");
+t0.opts.pty.onDidWrite((d) => written.push(d));
+t0.opts.pty.open();
+check(written.join("") === "boot line\r\n", "output that arrived before the console opened is replayed, LF as CR LF");
+mod.exports._serial.received("a\r\nb\n");
+check(written.join("") === "boot line\r\na\r\nb\r\n", "CR LF is passed through, bare LF becomes CR LF");
+mod.exports._serial.received("\n--- program restarted ---\n");
+check(/restarted/.test(written.join("")), "a reset shows a divider in the console");
+written.length = 0;
+t0.opts.pty.handleInput("x\r");
+check(written.join("") === "x\r\n", "typing is echoed, Enter as CR LF");
+t0.opts.pty.handleInput("\x1b[A");
+check(written.join("") === "x\r\n", "escape sequences are dropped, not echoed or sent");
+mod.exports._serial.open();
+check(terminals.length === 1 && t0.shown.length === 2, "opening again brings the same console forward");
+t0.opts.pty.close();
+mod.exports._serial.open();
+check(terminals.length === 2, "after the student closes it, the next open creates a fresh console");
 
 // ------------------------------------------------------ the flash, in a worker
 // A worker's navigator.usb has getDevices() but no requestDevice(). The first

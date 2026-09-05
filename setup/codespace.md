@@ -85,6 +85,13 @@ Then, every time:
 That one action **builds and flashes**. You do not need to build first, and it
 can never flash yesterday's firmware by mistake.
 
+After the flash, a **micro:bit serial** terminal opens next to your normal
+terminal: everything your program `Put_Line`s appears there, over the same USB
+connection. Click into it and type to send characters to your program —
+`MicroBit.Console.Get` receives them one at a time, and Enter sends CR LF, the
+same line ending `Put_Line` writes. Closed it? Run `micro:bit: Open serial
+console` from the command palette.
+
 A progress notification shows the flash, and `Put_Line` output appears in the
 **micro:bit** output channel. After the first time, the board reconnects by
 itself when the Codespace opens, so there is no device prompt again.
