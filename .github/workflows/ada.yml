@@ -226,6 +226,9 @@ jobs:
       - name: Browser flasher regression test
         run: node tools/test_flasher.mjs
 
+      - name: VS Code extension regression test
+        run: node tools/test_extension.mjs
+
       - name: Tasks must stay platform agnostic
         run: |
           set -euo pipefail
