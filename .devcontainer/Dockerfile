@@ -73,7 +73,29 @@ RUN set -euo pipefail; \
     alr --non-interactive toolchain --select \
         "gnat_arm_elf=${GNAT_VERSION}" \
         "gprbuild=${GPRBUILD_VERSION}"; \
-    alr toolchain
+    alr toolchain; \
+    \
+    # Drop the runtimes this board cannot use. gnat_arm_elf ships 71 of them for
+    # boards from STM32 to RISC-V -- 1.1 GB of its 1.9 GB -- and every one of the
+    # 47 projects here uses just embedded-nrf52833 or light-cortex-m4f. Keeping
+    # the nRF52833 family plus generic Cortex-M4 leaves 69 MB.
+    #
+    # This MUST happen in the same layer as the install: a delete in a later
+    # layer leaves the files in the earlier one and saves nothing.
+    cd "$ALIRE_TOOLCHAIN_DIR"/gnat_arm_elf_*/arm-eabi/lib/gnat; \
+    for rt in */; do \
+      rt="${rt%/}"; \
+      case "$rt" in \
+        embedded-nrf52833|light-nrf52833|light-tasking-nrf52833|light-cortex-m4f|light-cortex-m4) ;; \
+        *) rm -rf "$rt" ;; \
+      esac; \
+    done; \
+    # Fail loudly rather than shipping an image that cannot build the examples.
+    test -d embedded-nrf52833 || { echo "embedded-nrf52833 was removed!" >&2; exit 1; }; \
+    test -d light-cortex-m4f  || { echo "light-cortex-m4f was removed!" >&2; exit 1; }; \
+    echo "runtimes kept:"; ls; \
+    rm -rf "$ALIRE_TOOLCHAIN_DIR"/gnat_arm_elf_*/share/info \
+           "$ALIRE_TOOLCHAIN_DIR"/gnat_arm_elf_*/share/man
 USER root
 
 # Put the toolchain on PATH for everyone, including processes that never source

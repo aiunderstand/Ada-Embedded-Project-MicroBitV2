@@ -77,6 +77,8 @@ const GOOD_HEX = ":10000000783A0020091E0100541E0100541E010010\n:00000001FF\n";
 const MANIFEST = {
   commit: "abc1234", built: "2026-09-04T20:00:00Z",
   projects: [
+    { id: "template", family: "build", label: "template (just built here)",
+      hex: "main.hex", bytes: 391025, summary: "the firmware currently in build/" },
     { id: "template", family: "template", label: "template", hex: "template.hex",
       bytes: 390000, summary: "" },
     { id: "ravenscar/music", family: "ravenscar", label: "music",
@@ -87,6 +89,7 @@ const MANIFEST = {
 };
 let fetchRoutes = {
   "./firmware/index.json": { ok: true, json: MANIFEST },
+  "./firmware/main.hex": { ok: true, text: GOOD_HEX },
   "./firmware/ravenscar-music.hex": { ok: true, text: GOOD_HEX },
   "./firmware/spark-bounded_queue.hex": { ok: true, text: "not a hex at all" },
 };
@@ -170,6 +173,13 @@ check(els.examples.options.length === MANIFEST.projects.length,
       "every project in the manifest should appear in the picker");
 check(els.examples.children.some((g) => g.label === "SPARK (proved)"),
       "examples should be grouped by family");
+// mb.py serve publishes the local build under family "build"; it must be listed
+// first, because on a Codespace it is the whole point of the page.
+check(els.examples.children[0]?.label === "Your latest build",
+      "a locally served build should be the first group");
+
+await app.useExample("main.hex", "template");
+check(app.hex !== null, "the locally served build should load as firmware");
 
 await app.useExample("ravenscar-music.hex", "ravenscar/music");
 check(app.hex !== null, "a gallery example should load as firmware");

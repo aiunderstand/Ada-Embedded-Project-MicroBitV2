@@ -150,6 +150,10 @@ export function createApp({
       return;
     }
     const families = [
+      // "build" only appears when the page is served from a Codespace or a
+      // local machine by "mb.py serve", where the firmware you just built sits
+      // next to the page. It goes first because it is what you came for.
+      ["build", "Your latest build"],
       ["template", "Template"],
       ["spark", "SPARK (proved)"],
       ["ravenscar", "Ravenscar"],

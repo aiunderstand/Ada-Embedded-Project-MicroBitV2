@@ -65,6 +65,21 @@
             "group": "build"
         },
         {
+            // Codespaces have no USB, so the firmware normally has to be
+            // downloaded and handed to the flasher by hand. This serves the
+            // flasher from here instead, with the build already loaded.
+            "label": "Flash from here (serve flasher)",
+            "detail": "Serve the flasher on port 8080 with the firmware you just built",
+            "type": "process",
+            "command": "python3",
+            "windows": { "command": "python" },
+            "args": ["tools/mb.py", "serve"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$ada-error", "$ada-warning"],
+            "isBackground": true,
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
             "label": "Erase",
             "detail": "Mass-erase the micro:bit (try this if flashing times out)",
             "type": "process",

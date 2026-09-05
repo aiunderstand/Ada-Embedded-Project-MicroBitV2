@@ -25,6 +25,19 @@
 
     "remoteUser": "vscode",
 
+    // "mb.py serve" publishes the flasher here. Forwarded ports are served over
+    // HTTPS on *.app.github.dev, which is a secure context -- WebUSB requires
+    // one, so flashing works straight from a Codespace with no download step.
+    "forwardPorts": [8080],
+    "portsAttributes": {
+        "8080": {
+            "label": "micro:bit flasher",
+            // Not "openPreview": VS Code's Simple Browser is an iframe and
+            // WebUSB does not work there. It has to be a real browser tab.
+            "onAutoForward": "notify"
+        }
+    },
+
     // USB passthrough only works on a Linux host. Docker Desktop on macOS and
     // Windows cannot pass USB to its Linux VM, and a Codespace has no USB at
     // all -- those build here and flash from the browser. See setup/.

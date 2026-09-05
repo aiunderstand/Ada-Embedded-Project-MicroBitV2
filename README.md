@@ -20,9 +20,8 @@ Everything below assumes you are working in *your* repository, not this one.
 
 | | Path | You install | Flashing | Debugging (F5) |
 |---|---|---|---|---|
-| 🟢 | **[In your browser](setup/codespace-browser.md)** | **nothing** | from the browser | no |
-| 🟡 | **[Browser machine, local editor](setup/codespace-vscode.md)** | VS Code + 1 extension | from the browser | no |
-| 🔵 | **[On your own machine](setup/local.md)** | VS Code, Python, Alire | plugged in, or browser | **yes** |
+| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | no |
+| 🔵 | **[On your own machine](setup/local.md)** | VS Code, Python, Git — then one command | plugged in, or browser | **yes** |
 
 **Not sure?** Start with the browser. It needs nothing installed, works on a
 school laptop or a Chromebook, and you can move to a local install later without
@@ -40,6 +39,10 @@ Connect the board, pick a firmware, flash it, and read `Put_Line` output at
 
 There are ready-built examples in the picker, so you can flash `music` or
 `accelerometer` and see the board do something before writing any code.
+
+**Working in a Codespace?** You do not have to download anything. Run the
+**Flash from here (serve flasher)** task and open the forwarded port — the page
+is then served from your Codespace with your own build already loaded.
 
 ## What is in here
 
