@@ -69,7 +69,44 @@ against real Chrome if you need `navigator.usb` to exist, and stub
 `navigator.usb.getDevices` with `page.addInitScript` to exercise the connected
 paths.
 
-## 5. Counting the steps
+## 5. The VS Code extension, in a real extension host
+
+`tools/test_extension.mjs` loads the bundle into a mock `vscode` object. That
+catches packaging mistakes, not whether the extension activates in the real web
+worker host or whether its chord resolves. For those, run VS Code for the Web
+itself, with the packaged extension loaded:
+
+```bash
+cd "$SP" && npm install @vscode/test-web
+python3 tools/mb.py extension                      # build/microbit-flasher-*.vsix
+rm -rf "$SP/vsix" && mkdir "$SP/vsix" && (cd "$SP/vsix" && unzip -q <repo>/build/microbit-flasher-*.vsix)
+npx @vscode/test-web --browser none --quality stable --port 3000 \
+    --extensionDevelopmentPath "$SP/vsix/extension" <a small folder with .vscode/tasks.json and build/main.hex>
+```
+
+`--browser none` only starts the server; drive it with your own Playwright:
+wait for `.monaco-workbench`, give `onStartupFinished` ~15 s, then
+
+- `.statusbar-item` texts should include **Flash micro:bit** — activation proof;
+- `page.keyboard.press('Control+Alt+F')` then read
+  `.notifications-toasts .notification-list-item`: with no board the correct
+  result is *Failed to execute 'requestDevice' on 'USB': No device selected*,
+  which proves the chord reached the command and the command reached WebUSB;
+- *command 'microbit.flash' not found* means the manifest loaded and the code
+  did not.
+
+**Is a chord already taken?** Run `Preferences: Open Default Keyboard Shortcuts
+(JSON)` in that instance, select all, copy, and read the clipboard from the page
+(grant `clipboard-read`). VS Code spells modifiers in the order ctrl, shift,
+alt, cmd — `alt+cmd+f`, never `cmd+alt+f`. The platform follows the user agent,
+so a `newContext({ userAgent })` spoofing Windows or Linux yields those tables
+from the same server. Chromium headless on macOS reports the Mac tables.
+
+What this still cannot do: a Codespace. There is no remote, so the
+install-on-attach path (`postAttachCommand` → `mb.py extension --install`) is
+covered only by the fake-`code` test in `tools/test_extension.mjs`.
+
+## 6. Counting the steps
 
 To judge whether a flow is too cumbersome, count what a student actually does —
 clicks, keystrokes, and dialogs — rather than guessing. Record them, then compare

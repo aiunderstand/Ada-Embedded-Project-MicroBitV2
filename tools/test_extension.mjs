@@ -48,6 +48,22 @@ check(src.includes("runBuildTask"),
 const manifestPkg = JSON.parse(fs.readFileSync(path.join(tmp, "extension/package.json"), "utf8"));
 check((manifestPkg.contributes.keybindings || []).some(k => k.command === "microbit.flash"),
       "flash must have a keybinding, so it needs no command palette");
+// A chord VS Code already uses is a regression, not a feature: the first pick,
+// cmd+alt+f, was Replace on a Mac. VS Code writes modifiers as ctrl, shift,
+// alt, cmd; both spellings are listed so a manifest typo cannot slip past.
+const TAKEN = new Set([
+  "cmd+alt+f", "alt+cmd+f",        // Replace (mac)
+  "ctrl+h",                        // Replace (win/linux)
+  "shift+alt+f",                   // Format Document
+  "ctrl+shift+f", "shift+cmd+f", "cmd+shift+f", // Search
+  "ctrl+f", "cmd+f", "alt+f", "f1", "f5",
+]);
+for (const kb of manifestPkg.contributes.keybindings || []) {
+  for (const chord of [kb.key, kb.mac, kb.win, kb.linux].filter(Boolean)) {
+    check(!TAKEN.has(chord.toLowerCase()),
+          `keybinding "${chord}" is a VS Code default on some platform`);
+  }
+}
 
 // Load it exactly as the worker host would: no window, no document.
 const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };
@@ -78,9 +94,58 @@ check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
 
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// --install runs on every Codespace attach. VS Code will not swap out a running
+// extension, so reinstalling an identical copy must be a no-op, and replacing
+// a changed one must tell the student to reload. Exercised against a fake
+// "code" on PATH and VSCODE_EXTENSIONS pointing at a scratch directory.
+if (process.platform !== "win32") {
+  const fake = fs.mkdtempSync("/tmp/fakecode-");
+  const log = path.join(fake, "calls.log");
+  fs.writeFileSync(path.join(fake, "code"), `#!/bin/sh\necho "$@" >> "${log}"\n`, { mode: 0o755 });
+  const extDir = fs.mkdtempSync("/tmp/vscode-ext-");
+  const env = { ...process.env, PATH: `${fake}:${process.env.PATH}`,
+                VSCODE_EXTENSIONS: extDir, HOME: fake };
+  const install = () => execFileSync("python3", ["tools/mb.py", "extension", "--install"],
+                                     { cwd: root, env, encoding: "utf8", stdio: "pipe" });
+  const calls = () => fs.existsSync(log)
+    ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean) : [];
+
+  let out = install();
+  check(calls().length === 1 && /--install-extension .*--force/.test(calls()[0]),
+        "a first install should call code --install-extension --force");
+
+  // Pretend VS Code unpacked it: the vsix's extension/ subtree becomes the root.
+  const unpacked = path.join(extDir, `${pkg.publisher}.${pkg.name}-${pkg.version}`);
+  execFileSync("python3", ["-c", [
+    "import zipfile, pathlib",
+    `z = zipfile.ZipFile(${JSON.stringify(vsix)})`,
+    `root = pathlib.Path(${JSON.stringify(unpacked)})`,
+    "for m in z.namelist():",
+    "    if m.startswith('extension/'):",
+    "        dest = root / m[len('extension/'):]",
+    "        dest.parent.mkdir(parents=True, exist_ok=True)",
+    "        dest.write_bytes(z.read(m))",
+  ].join("\n")]);
+
+  out = install();
+  check(calls().length === 1,
+        "reinstalling an identical copy must not touch VS Code: it invalidates a running window");
+  check(/up to date/.test(out), "an identical copy should be reported as up to date");
+
+  fs.appendFileSync(path.join(unpacked, "extension.js"), "\n// stale\n");
+  out = install();
+  check(calls().length === 2, "a changed copy must be reinstalled");
+  check(/Reload Window/.test(out),
+        "replacing a copy a window may have loaded must say how to reload");
+
+  fs.rmSync(fake, { recursive: true, force: true });
+  fs.rmSync(extDir, { recursive: true, force: true });
+}
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  extension: packaging, web manifest, worker-safe bundle, activation");
+console.log("PASS  extension: packaging, web manifest, worker-safe bundle, activation, keybinding, idempotent install");
