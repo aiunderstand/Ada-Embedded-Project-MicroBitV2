@@ -150,14 +150,16 @@ the browser instead:
 
 `Put_Line` writes to the USB serial port at **115200**. Either:
 
-* the **Serial Monitor** panel in VS Code (it is in the recommended extensions), or
-* the **Output** panel of the [browser flasher](https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/).
+* the **serial console** of the [browser flasher](https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/)
+  (Chrome, Edge or Opera), or
+* any serial terminal you already like, at 115200 baud.
 
-Only one of them can hold the port at a time.
+Only one program can hold the port at a time.
 
 ## 8. Debug with breakpoints
 
-This is what the local setup buys you.
+This is what the local setup buys you. It uses the **Cortex-Debug** extension;
+the first time you press **F5**, VS Code offers to install it — accept.
 
 Click in the margin of `main.adb` to set a breakpoint, then press **F5**. The
 program stops there and you can inspect variables and step through.
