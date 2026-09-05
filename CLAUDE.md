@@ -28,7 +28,7 @@ setup/                            per-path student guides
 ```shell
 python3 tools/mb.py setup          # make a fresh machine ready (idempotent)
 python3 tools/mb.py doctor         # is the toolchain usable?
-python3 tools/mb.py list           # the 47 buildable projects
+python3 tools/mb.py list           # every buildable project (47 today)
 python3 tools/mb.py build [--use ID | --use-dir DIR | --all]
 python3 tools/mb.py flash | erase
 python3 tools/mb.py prove --all-spark --mode=prove --level=1
@@ -38,7 +38,7 @@ python3 tools/mb.py gallery --out site/firmware
 ```
 
 Builds run `alr exec -- gprbuild -P <gpr> --root-dir=. --relocate-build-tree=build/obj`
-from the repository root. That is what lets any of the 47 projects build without
+from the repository root. That is what lets any project build without
 changing the VS Code folder, and keeps object files out of the submodule.
 Firmware is always staged at `build/main.elf/.hex/.bin`.
 
@@ -60,7 +60,7 @@ URLs; let Alire resolve them.
 ## Testing
 
 ```shell
-python3 tools/mb.py build --all      # 47 PASS, 0 FAIL
+python3 tools/mb.py build --all      # every project PASS, 0 FAIL, 0 XPASS
 python3 tools/mb.py prove --all-spark --mode=prove --level=1
 node tools/test_flasher.mjs          # the browser flasher
 node tools/test_extension.mjs        # the VS Code extension
