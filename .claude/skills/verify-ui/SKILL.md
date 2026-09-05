@@ -73,40 +73,25 @@ paths.
 
 `tools/test_extension.mjs` loads the bundle into a mock `vscode` object. That
 catches packaging mistakes, not whether the extension activates in the real web
-worker host or whether its chord resolves. For those, run VS Code for the Web
-itself, with the packaged extension loaded:
+worker host or whether its chord resolves. Two rigs, both in the scratchpad:
+
+**test-web — no remote, fastest.** Loads the assembled folder as a development
+extension, straight into the web worker host.
 
 ```bash
 cd "$SP" && npm install @vscode/test-web
-python3 tools/mb.py extension                      # build/microbit-flasher-*.vsix
-rm -rf "$SP/vsix" && mkdir "$SP/vsix" && (cd "$SP/vsix" && unzip -q <repo>/build/microbit-flasher-*.vsix)
+python3 tools/mb.py extension --out "$SP/ext"
 npx @vscode/test-web --browser none --quality stable --port 3000 \
-    --extensionDevelopmentPath "$SP/vsix/extension" <a small folder with .vscode/tasks.json and build/main.hex>
+    --extensionDevelopmentPath "$SP/ext" <a small folder with .vscode/tasks.json and build/main.hex>
 ```
 
-`--browser none` only starts the server; drive it with your own Playwright:
-wait for `.monaco-workbench`, give `onStartupFinished` ~15 s, then
-
-- `.statusbar-item` texts should include **Flash micro:bit** — activation proof;
-- `page.keyboard.press('Control+Alt+F')` then read
-  `.notifications-toasts .notification-list-item`: with no board the correct
-  result is *Failed to execute 'requestDevice' on 'USB': No device selected*,
-  which proves the chord reached the command and the command reached WebUSB;
-- *command 'microbit.flash' not found* means the manifest loaded and the code
-  did not.
-
-**Is a chord already taken?** Run `Preferences: Open Default Keyboard Shortcuts
-(JSON)` in that instance, select all, copy, and read the clipboard from the page
-(grant `clipboard-read`). VS Code spells modifiers in the order ctrl, shift,
-alt, cmd — `alt+cmd+f`, never `cmd+alt+f`. The platform follows the user agent,
-so a `newContext({ userAgent })` spoofing Windows or Linux yields those tables
-from the same server. Chromium headless on macOS reports the Mac tables.
-
-What test-web cannot do is a *remote* — and a Codespace is a remote. Two bugs
-lived only there: `vscode.tasks.executeTask` throwing `NotSupported` in the web
-worker host (test-web has no tasks to fetch, so the build was silently skipped),
-and the same-version reinstall on attach leaving a half-updated window. For
-those, run VS Code's own server:
+**serve-web — a real VS Code Server as the remote, the way a Codespace is.**
+It has no development-extension option, so install into the server with the
+remote CLI from the integrated terminal (`code --install-extension`) — knowing
+that this delivery does *not* work in a Codespace (#144513); here the worker is
+same-origin, so it does, and it is the only way to get the extension into this
+rig. Do not try *Install Extension from Location* with `mb.py serve`: the page
+policy is `connect-src … https:`, and `http://localhost` is refused.
 
 ```bash
 CODE="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
@@ -116,34 +101,34 @@ mkdir -p "$SP/serve-web-data/data/User" && echo '{ "security.workspace.trust.ena
     --server-data-dir "$SP/serve-web-data" --cli-data-dir "$SP/cli-data" --default-folder <repo>
 ```
 
-The browser at `http://localhost:8100/` is the client, the server is the remote,
-and the extension runs in the browser's web worker host exactly as in a
-Codespace. Install the way `postAttachCommand` does — by typing into the
-**integrated terminal**, where `code` is the remote CLI with the IPC hook, so
-the running window sees the install happen:
+Drive either with your own Playwright: wait for `.monaco-workbench`, allow
+`onStartupFinished` ~15 s, then
 
-- open a terminal via the palette (`Terminal: Create New Terminal`; the backtick
-  chord does not survive headless key mapping), wait, send one throwaway Enter
-  — the first terminal eats the first keystrokes — then type
-  `code --install-extension build/microbit-flasher-0.1.0.vsix --force > $SP/t.log 2>&1`
-  and read the log from disk rather than scraping xterm rows;
-- the server's extensions live in `$SP/serve-web-data/extensions`; pass
-  `VSCODE_EXTENSIONS=` there when exercising `mb.py extension --install` so its
-  installed-copy check can find them;
-- `Developer: Reload Window` from the palette is a clean re-attach.
+- `.statusbar-item` texts should include **Flash micro:bit** — activation proof;
+- `page.keyboard.press('Control+Alt+F')` then read
+  `.notifications-toasts .notification-list-item`: with no board the correct
+  result is *Failed to execute 'requestDevice' on 'USB': No device selected*,
+  reached *after* the Build task ran (check `build/main.hex`'s mtime moved) —
+  the chord reached the command, the build ran, the command reached WebUSB;
+- *command 'microbit.flash' not found* means the manifest loaded and the code
+  did not; the **Extension Host (Worker)** output channel says why.
 
-Then the same assertions as above: the status-bar item is activation, the
-notification after the chord is the command running. With no board, a fully
-working flow ends in a USB error *after* the build has run — check
-`build/main.hex`'s mtime moved.
+In the serve-web terminal, the first keystrokes of a fresh terminal are eaten
+while the shell starts — send a throwaway Enter, wait, then type — and read
+command output from a file you redirected to, not from xterm rows.
 
-**Check the cache headers when code seems stale:**
-`curl -sI 'http://localhost:8100/vscode-remote-resource?path=<extensions>/<dir>/extension.js'`
-shows `cache-control: public, max-age=31536000`. A same-version reinstall keeps
-the URL, so a reload can run old code under a new manifest; that is why the
-packaged version is content-derived, and why a test here should install a
-*changed* build and confirm the new code runs after the reload (a marker line
-in the output channel is enough).
+**Is a chord already taken?** Run `Preferences: Open Default Keyboard Shortcuts
+(JSON)` in the instance, select all, copy, and read the clipboard from the page
+(grant `clipboard-read`). VS Code spells modifiers in the order ctrl, shift,
+alt, cmd — `alt+cmd+f`, never `cmd+alt+f`. The platform follows the user agent,
+so a `newContext({ userAgent })` spoofing Windows or Linux yields those tables
+from the same server.
+
+What neither rig can show: a Codespace's routing and content-security policy.
+That needs a Codespace and the published extension, and the diagnostic order
+that works there is *Show Running Extensions* → the **Extension Host (Worker)**
+channel → the Network tab filtered on `extension.js` → the Console for
+`Content Security Policy`.
 
 ## 6. Counting the steps
 

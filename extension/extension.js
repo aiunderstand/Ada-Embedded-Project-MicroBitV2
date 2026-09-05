@@ -35,6 +35,73 @@ function setStatus(text, busy) {
   status.show();
 }
 
+// ---------------------------------------------------------------- serial
+//
+// The board's UART comes over the same authorised USB device: DAPLink bridges
+// it through the CMSIS-DAP interface, and the bundled library delivers it as
+// "serialdata" events and accepts text back through serialWrite(). An output
+// channel can show it but cannot take input, so the console is a VS Code
+// pseudoterminal: the extension supplies what appears, and gets the keys.
+
+const SERIAL_BACKLOG_MAX = 64 * 1024;
+let serial = null;      // { terminal, write } while the console is open
+let serialBacklog = ""; // what arrived while it was not
+
+/** xterm needs CR LF; Put_Line sends it, a bare Put (ASCII.LF) does not. */
+function forTerminal(text) {
+  return text.replace(/\r?\n/g, "\r\n");
+}
+
+function serialReceived(data) {
+  if (serial) {
+    serial.write(forTerminal(data));
+  } else {
+    serialBacklog = (serialBacklog + data).slice(-SERIAL_BACKLOG_MAX);
+  }
+}
+
+function serialSend(text) {
+  if (!connection) {
+    log("serial: not connected, nothing sent");
+    return;
+  }
+  connection.serialWrite(text).catch((err) => log(`serial write failed: ${err.message}`));
+}
+
+/** Open the console, or bring it forward. Never takes focus: Ctrl+Alt+F must keep working. */
+function openSerialConsole() {
+  if (serial) {
+    serial.terminal.show(true);
+    return;
+  }
+  const out = new vscode.EventEmitter();
+  const pty = {
+    onDidWrite: out.event,
+    open() {
+      if (serialBacklog) {
+        out.fire(forTerminal(serialBacklog));
+        serialBacklog = "";
+      }
+    },
+    close() {
+      serial = null;
+    },
+    handleInput(data) {
+      // Keys reach the board as typed, except escape sequences (arrows, or a
+      // chord the terminal swallowed), which would only be garbage to a
+      // program reading characters. MicroBit.Console.Get does not echo, so
+      // the console does; Enter sends CR LF, the terminator Put_Line writes.
+      if (data.startsWith("\x1b")) return;
+      const text = data.replace(/\r/g, "\r\n");
+      out.fire(text);
+      serialSend(text);
+    },
+  };
+  const terminal = vscode.window.createTerminal({ name: "micro:bit serial", pty });
+  serial = { terminal, write: (text) => out.fire(text) };
+  terminal.show(true);
+}
+
 /** The first workspace folder, or undefined when no folder is open. */
 function workspaceRoot() {
   const folders = vscode.workspace.workspaceFolders;
@@ -92,27 +159,40 @@ async function ensureConnected() {
   }
 
   // Already-authorised devices need no prompt.
-  let devices = await navigator.usb.getDevices();
-  if (!devices.some((d) => d.vendorId === MICROBIT_VID)) {
+  const find = (list) => list.find((d) => d.vendorId === MICROBIT_VID);
+  let device = find(await navigator.usb.getDevices());
+  if (!device) {
     log("Asking you to choose the micro:bit...");
     await vscode.commands.executeCommand(
       "workbench.experimental.requestUsbDevice",
       { filters: [{ vendorId: MICROBIT_VID }] }
     );
-    devices = await navigator.usb.getDevices();
+    device = find(await navigator.usb.getDevices());
   }
-  if (!devices.some((d) => d.vendorId === MICROBIT_VID)) {
+  if (!device) {
     throw new Error("No micro:bit was selected.");
   }
 
   // pauseOnHidden touches window/document, which do not exist in a worker.
-  const usb = createUSBConnection({ pauseOnHidden: false });
+  //
+  // Left to itself the library asks for a device with
+  // navigator.usb.requestDevice(), which exists on a page and not in a worker
+  // ("navigator.usb.requestDevice is not a function", from a real Codespace).
+  // The workbench has just authorised one, so hand it over -- that path also
+  // reports a failed connection instead of swallowing it and asking again --
+  // and route the library's own log into the output channel.
+  const usb = createUSBConnection({
+    pauseOnHidden: false,
+    deviceSelectionMode: "UseAnyAllowed",
+    logging: { log: (m) => log(`  [usb] ${m}`), event: () => {} },
+  });
+  usb.usbDevice = device;
   usb.addEventListener("status", ({ status: s }) => {
     log(`connection: ${s}`);
     setStatus(s === "Connected" ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
   });
-  usb.addEventListener("serialdata", ({ data }) => output.append(data));
-  usb.addEventListener("serialreset", () => log("\n--- program restarted ---"));
+  usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
+  usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
   await usb.connect();
   connection = usb;
   return usb;
@@ -123,7 +203,8 @@ async function cmdConnect() {
   try {
     setStatus("connecting", true);
     await ensureConnected();
-    log("Connected. Serial output appears below.");
+    log("Connected. Serial output is in the \"micro:bit serial\" terminal.");
+    openSerialConsole();
     setStatus("Flash micro:bit (connected)", false);
   } catch (err) {
     setStatus("Flash micro:bit", false);
@@ -202,6 +283,7 @@ async function cmdFlash() {
       }
     );
     log(`Flashed ${HEX_PATH}.`);
+    openSerialConsole();
     vscode.window.showInformationMessage("micro:bit flashed.");
   } catch (err) {
     // The stack goes to the output channel: "NotSupported" alone says nothing
@@ -244,7 +326,8 @@ function activate(context) {
     status,
     vscode.commands.registerCommand("microbit.connect", cmdConnect),
     vscode.commands.registerCommand("microbit.flash", cmdFlash),
-    vscode.commands.registerCommand("microbit.status", cmdStatus)
+    vscode.commands.registerCommand("microbit.status", cmdStatus),
+    vscode.commands.registerCommand("microbit.serial", openSerialConsole)
   );
 
   // Reconnect silently if the board was authorised earlier in this browser, so
@@ -280,4 +363,9 @@ function deactivate() {
   }
 }
 
-module.exports = { activate, deactivate };
+module.exports = {
+  activate,
+  deactivate,
+  // For tools/test_extension.mjs, which has no board to emit serial data.
+  _serial: { received: serialReceived, open: openSerialConsole },
+};

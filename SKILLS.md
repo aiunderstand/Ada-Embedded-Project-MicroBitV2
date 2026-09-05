@@ -18,14 +18,15 @@ needs a real device and a user gesture in a browser-native dialog; Playwright
 cannot grant it. Everything up to *"Flash becomes enabled"* is testable; the
 flash itself needs a board and a human.
 
-**The extension, in a real extension host.** `@vscode/test-web` serves VS Code
-for the Web with the packaged `.vsix` loaded into the web worker host; Playwright
-then presses the chord and reads the notifications. `tools/test_extension.mjs`
-loads the bundle into a mock `vscode` and cannot tell you whether a keybinding
-resolves, whether a chord is already taken, or whether the extension activates
-in the real host — this can. It still cannot reproduce a *Codespace*: there is
-no remote, so the install-on-attach path is only covered by the fake-`code`
-test in `test_extension.mjs`.
+**The extension, in a real extension host.** `@vscode/test-web` loads the
+assembled folder into the web worker host; `code serve-web` adds a real remote.
+Playwright then presses the chord and reads the notifications.
+`tools/test_extension.mjs` loads the bundle into a mock `vscode` and cannot tell
+you whether a keybinding resolves, whether a chord is already taken, or whether
+the extension activates in the real host — these can. What neither can show is
+a Codespace's own routing and content-security policy (microsoft/vscode#144513,
+and a `connect-src` that admits only the Marketplace CDNs): that needs a
+Codespace and the published extension.
 
 **Install Playwright into the session scratchpad, never the repo.** There is no
 npm build here on purpose, and `node_modules/` would be 100 MB of untracked

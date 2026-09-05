@@ -1,0 +1,58 @@
+# Publishes the VS Code web extension to the Marketplace as
+# AIUnderstand.microbit-flasher. Manual, by the lecturer, from this repository
+# only: a template instance must never publish.
+#
+# Why the Marketplace: a web extension runs in a Codespace only when it is
+# installed *in the browser* and served from a CDN. One installed into the
+# Codespace itself is fetched by the web worker host from another origin and
+# fails with a 404 (microsoft/vscode#144513, open since 2022). The Marketplace
+# is the CDN VS Code already knows; the Pages site is the fallback.
+#
+# One-time setup (see setup/publishing.md): create the publisher "aiunderstand"
+# at marketplace.visualstudio.com/manage, make an Azure DevOps personal access
+# token with the "Marketplace (Manage)" scope, and store it as the repository
+# secret VSCE_PAT.
+name: Publish the flasher extension
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to the Marketplace
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Marketplace needs every release to be higher than the last; the run
+      # number is monotonic and needs no commit. Versions uploaded by hand from
+      # extension/package.json are 0.1.x, so 0.2.<run> can never collide.
+      - name: Assemble the extension folder
+        run: python3 tools/mb.py extension --out build/extension --version "0.2.${{ github.run_number }}"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd build/extension
+          npx --yes @vscode/vsce@latest package --no-dependencies --out "$RUNNER_TEMP/microbit-flasher.vsix"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microbit-flasher-0.2.${{ github.run_number }}
+          path: ${{ runner.temp }}/microbit-flasher.vsix
+
+      - name: Publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VSCE_PAT}" ]; then
+            echo "::error::the repository secret VSCE_PAT is not set -- see setup/publishing.md"
+            exit 1
+          fi
+          cd build/extension
+          npx --yes @vscode/vsce@latest publish --no-dependencies --packagePath "$RUNNER_TEMP/microbit-flasher.vsix"

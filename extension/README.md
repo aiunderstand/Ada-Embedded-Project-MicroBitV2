@@ -1,60 +1,43 @@
-# micro:bit v2 Flasher (VS Code web extension)
+# micro:bit v2 Flasher
 
-Flashes `build/main.hex` to a micro:bit v2 over WebUSB, from inside VS Code —
-including a **Codespace**, which has no USB port of its own.
+Build your program and flash it to a BBC micro:bit v2 over WebUSB, from inside
+VS Code — including a **GitHub Codespace**, which has no USB port of its own.
 
-## Why this exists
+One key does the whole job: **Ctrl+Alt+F** (Control+Option+F on a Mac), or the
+**Flash micro:bit** button in the status bar. It runs the workspace **Build**
+task, then flashes `build/main.hex`. The first time, the browser asks which USB
+device to use — choose the micro:bit. Then a **micro:bit serial** terminal
+opens: your program's output over the same USB connection, and what you type
+goes back to it (Enter sends CR LF). The **micro:bit** output channel carries
+the extension's own log.
 
-A Codespace runs in a data centre. Its terminal, its filesystem and `pyocd` are
-all on a remote machine that cannot see your board. Port forwarding does not
-solve it either.
+Made for the [Ada micro:bit course template](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2);
+it flashes any Intel HEX at `build/main.hex`, whatever produced it.
 
-A VS Code **web** extension is different: VS Code loads it into the *web
-extension host running in your browser*, on your own laptop, where the board is
-plugged in. So `navigator.usb` is reachable from here even though it is not
-reachable from the Codespace shell.
+## Where it runs
 
-Authorising a device needs a user gesture, which an extension does not have, so
-the picker is opened through a VS Code built-in:
+This is a *web* extension: VS Code runs it in the **browser**, on your own
+machine, where the board is plugged in — not in the Codespace, which cannot see
+your USB ports. Install it from the Extensions view of a Codespace opened in the
+browser (or vscode.dev / github.dev); if VS Code offers a choice, pick *Install
+in Browser*. Installed *into* the Codespace it can never start.
 
-```js
-vscode.commands.executeCommand("workbench.experimental.requestUsbDevice",
-                              { filters: [{ vendorId: 0x0d28 }] });
-```
-
-It is marked experimental but is present in current VS Code, and is the same
-mechanism the ESP-IDF Web extension uses.
+It needs a Chromium browser — Chrome, Edge or Opera. Safari and Firefox have no
+WebUSB. In desktop VS Code there is no WebUSB either; flash with
+`python3 tools/mb.py flash` from the course template instead.
 
 ## Commands
 
-| Command | Does |
+| Command | |
 |---|---|
-| `micro:bit: Flash build/main.hex` | flashes the current build |
-| `micro:bit: Connect board` | connects and starts streaming serial output |
-| `micro:bit: Show connection status` | reports whether WebUSB is reachable |
+| `micro:bit: Build and flash` | **Ctrl+Alt+F** — build, then flash `build/main.hex` |
+| `micro:bit: Connect board` | authorise the board and start the serial console |
+| `micro:bit: Open serial console` | the board's serial output, and a keyboard to it |
+| `micro:bit: Show connection status` | what the extension can see |
 
-## Building it
+## Source
 
-```shell
-python3 tools/mb.py extension            # packages build/microbit-flasher-*.vsix
-python3 tools/mb.py extension --install  # ...and installs it into this VS Code
-```
-
-There is deliberately **no npm build**. A `.vsix` is a zip with a manifest, so
-`mb.py` writes one with Python's `zipfile` — the container has no node, npm or
-vsce, and this way it does not need them. The devcontainer runs the install
-command on every attach.
-
-`extension.js` is bundled at package time with the library from
-`docs/vendor/microbit-connection-usb.mjs`, so the browser flasher and this
-extension share one copy. The ESM `export` clause is rewritten to `globalThis`
-assignments, because the web extension host loads a **classic** worker script.
-
-## Limitations
-
-* **Chromium browsers only** — Chrome, Edge, Opera. WebUSB is not in Safari or
-  Firefox.
-* **Not in desktop VS Code.** There the extension host is Node, which has no
-  `navigator.usb`; it says so and points you at `python3 tools/mb.py flash`.
-* Partial flashing is never used: it is a MakeCode feature that depends on that
-  toolchain's flash layout.
+`extension/` in the template repository. `python3 tools/mb.py extension`
+assembles this folder, bundling
+[@microbit/microbit-connection](https://github.com/microbit-foundation/microbit-connection)
+into it; it is published with `vsce` by the repository's workflow.
