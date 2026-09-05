@@ -137,6 +137,13 @@ notification after the chord is the command running. With no board, a fully
 working flow ends in a USB error *after* the build has run — check
 `build/main.hex`'s mtime moved.
 
+**When the worker log says `Activating extension … failed: Error:` with nothing
+after it,** the extension's `extension.js` fetch returned a non-200 (HTTP/2 has
+no status text). Network tab, filter `extension.js`, read the status; then
+`ls -la` the installed folder on the server — a `0600` there means the package
+was written without explicit modes. serve-web cannot show this one: its server
+runs as the file owner.
+
 **Check the cache headers when code seems stale:**
 `curl -sI 'http://localhost:8100/vscode-remote-resource?path=<extensions>/<dir>/extension.js'`
 shows `cache-control: public, max-age=31536000`. A same-version reinstall keeps

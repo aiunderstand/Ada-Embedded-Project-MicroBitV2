@@ -50,6 +50,17 @@ for (const f of ["extension.vsixmanifest", "[Content_Types].xml",
   check(fs.existsSync(path.join(tmp, f)), `the vsix should contain ${f}`);
 }
 
+// VS Code keeps zip modes on extract. zipfile.writestr() stamps 0600, which
+// left the installed extension.js owner-only; in a Codespace the resource
+// server is not the owner, answered 404, and the extension never activated.
+const modes = execFileSync("python3", ["-c",
+  `import zipfile;[print(i.filename, oct((i.external_attr >> 16) & 0o777)) for i in zipfile.ZipFile(${JSON.stringify(vsix)}).infolist()]`],
+  { encoding: "utf8" }).trim().split("\n");
+for (const line of modes) {
+  const [name, mode] = line.split(" ");
+  check(mode === "0o644", `${name} must be packaged as 0644 (world-readable), got ${mode}`);
+}
+
 const manifest = fs.readFileSync(path.join(tmp, "extension.vsixmanifest"), "utf8");
 // Without ExtensionKind=web, VS Code will not load it into the browser host,
 // which is the only host with USB access.

@@ -145,6 +145,16 @@ extension` sets the patch number from a hash of the package; `extension/
 package.json` keeps `0.1.0` and only its major.minor are used. Do not "fix" the
 odd-looking version.
 
+**`zipfile.writestr(name, …)` stamps entries 0600, and VS Code keeps zip modes
+on extract.** So the installed `extension.js` was owner-only, the process that
+serves `vscode-remote-resource` in a Codespace is not the owner, `serveFile`
+reports any stat/read failure as 404, and the worker logged `Activating
+extension … failed: Error:` with an empty message (HTTP/2 has no status text).
+`mb.py` writes explicit `ZipInfo` entries at 0644 and hashes a `VSIX_FORMAT`
+into the version so old installs are superseded. The diagnostic that found it:
+Output → *Extension Host (Worker)*, then the Network tab filtered on
+`extension.js`, then `ls -la` of the installed folder.
+
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
 worker's `ExtHostTask` only accepts `CustomExecution` tasks; a shell or process
 task like "Build" throws `NotSupported` before anything runs. Use

@@ -624,6 +624,10 @@ def cmd_extension(args) -> int:
     digest.update(bundled.encode())
     digest.update(json.dumps({k: v for k, v in pkg.items() if k != "version"},
                              sort_keys=True).encode())
+    # The way the files are packaged is part of the package: bump this when it
+    # changes, so an installed copy made the old way is superseded rather than
+    # reported up to date.
+    digest.update(f"format:{VSIX_FORMAT}".encode())
     version = f"{major}.{minor}.{int(digest.hexdigest()[:6], 16)}"
     pkg_text = json.dumps({**pkg, "version": version}, indent=2) + "\n"
 
@@ -669,13 +673,13 @@ def cmd_extension(args) -> int:
         stale.unlink()
     vsix = BUILD / f"{name}-{version}.vsix"
     with zipfile.ZipFile(vsix, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("extension.vsixmanifest", manifest)
-        z.writestr("[Content_Types].xml", content_types)
-        z.writestr("extension/package.json", pkg_text)
-        z.writestr("extension/extension.js", bundled)
+        _zip_add(z, "extension.vsixmanifest", manifest)
+        _zip_add(z, "[Content_Types].xml", content_types)
+        _zip_add(z, "extension/package.json", pkg_text)
+        _zip_add(z, "extension/extension.js", bundled)
         readme = EXTENSION_DIR / "README.md"
         if readme.is_file():
-            z.writestr("extension/README.md", readme.read_text())
+            _zip_add(z, "extension/README.md", readme.read_text())
     info(f"packaged {rel(vsix)} ({vsix.stat().st_size // 1024} KB)")
 
     if args.install:
@@ -707,6 +711,27 @@ def cmd_extension(args) -> int:
             info("installed. If 'Flash micro:bit' is not in the status bar, reload "
                  "the window: Ctrl+Shift+P > Developer: Reload Window")
     return 0
+
+
+# 1: zipfile.writestr() defaults. 2: explicit 0644 entries (see _zip_add).
+VSIX_FORMAT = 2
+
+
+def _zip_add(z, name: str, text: str) -> None:
+    """Add a file to the vsix as a world-readable, reproducible entry.
+
+    zipfile.writestr(name, data) stamps the entry 0600, and VS Code keeps zip
+    modes when it extracts, so the installed extension.js was readable by its
+    owner only. In a Codespace the process that serves vscode-remote-resource
+    is not that owner: it gets EACCES, the server reports it as 404, and the
+    web worker host fails activation with an empty error. Found from the
+    worker log and an `ls -la` of the installed folder. vsce writes 0644.
+    """
+    import zipfile
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o644 << 16
+    z.writestr(info, text)
 
 
 def _installed_extension_dirs(publisher: str, name: str) -> list[Path]:
