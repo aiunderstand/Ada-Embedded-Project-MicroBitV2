@@ -171,6 +171,13 @@ check(fakeView.webview.options && fakeView.webview.options.enableScripts === tru
 check(/<input[^>]*id="in"/.test(html) && /id="send"/.test(html) && /id="clear"/.test(html),
       "the console has an input field, a Send button and a Clear button");
 check(/Content-Security-Policy[^>]*script-src 'nonce-[0-9a-f]+'/.test(html), "scripts run only with the nonce");
+// The HTML is built from a template literal, where "\n" is interpreted: a real
+// line break landed inside a string in the view's script, which then never
+// ran -- no Send, no status, and Enter submitted the form for real.
+const inlineScript = /<script nonce="[0-9a-f]+">([\s\S]*?)<\/script>/.exec(html);
+check(inlineScript, "the view has one nonce'd inline script");
+try { new Function(inlineScript ? inlineScript[1] : "throw 1"); check(true, ""); }
+catch (e) { check(false, `the view's script must parse: ${e.message}`); }
 onMessage({ type: "ready" });
 check(posted.some((m) => m.type === "status" && m.connected === false), "ready tells the view it is not connected");
 check(posted.some((m) => m.type === "data" && m.text === "boot line\n"), "output from before the view existed is replayed on ready");

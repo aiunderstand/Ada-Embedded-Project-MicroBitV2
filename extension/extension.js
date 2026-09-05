@@ -157,7 +157,7 @@ function serialHtml(cspSource) {
     e.preventDefault();
     const text = input.value;
     input.value = "";
-    append("\u203a " + text + "\n", "sent");
+    append("\u203a " + text + "\\n", "sent");
     vscode.postMessage({ type: "send", text });
     input.focus();
   });
