@@ -1,0 +1,32 @@
+{
+  "name": "microbit-flasher",
+  "displayName": "micro:bit v2 Flasher",
+  "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
+  "version": "0.1.0",
+  "publisher": "usn",
+  "private": true,
+  "license": "MIT",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "browser": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "microbit.connect",
+        "title": "micro:bit: Connect board",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.flash",
+        "title": "micro:bit: Flash build/main.hex",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.status",
+        "title": "micro:bit: Show connection status",
+        "category": "micro:bit"
+      }
+    ]
+  }
+}

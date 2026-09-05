@@ -61,38 +61,33 @@ mb: firmware: build/main.elf, build/main.hex, build/main.bin
 
 ## 4. Flash the board, straight from the Codespace
 
-You do not need to download anything.
+No download, no file to drag.
 
-> A Codespace runs in a data centre and has **no USB port**, so it cannot reach
-> your board itself. What it *can* do is serve the flasher page to your own
-> browser, which then talks to the board for it.
+> A Codespace runs in a data centre and has **no USB port**. The flasher works
+> because it is a VS Code **web extension**: VS Code loads it into your
+> *browser*, on your own laptop, where the board is actually plugged in.
 
-1. Press **Ctrl+Shift+P**, choose **Tasks: Run Task**, then
-   **Flash from here (serve flasher)**.
-2. VS Code shows a notification that port **8080** is available. Open the
-   **PORTS** panel at the bottom, find *micro:bit flasher*, and click the
-   **globe** icon to open it in your browser.
-3. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
-4. Click **Connect**, pick the board, then **Flash**.
+The extension is built and installed automatically when the Codespace starts.
 
-Your build is already selected under **Your latest build** — the page is being
-served from the same Codespace that produced it.
+1. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
+2. Build with **Ctrl+Shift+B** if you have not already.
+3. Press **Ctrl+Shift+P** and run **micro:bit: Flash build/main.hex**.
+4. The first time, your browser asks which device to use — choose the micro:bit.
 
-`Put_Line` output appears in the **Output** panel of that page.
+A progress notification shows the flash, and `Put_Line` output appears in the
+**micro:bit** output channel. There is also a **micro:bit** button in the status
+bar that flashes the current build.
 
-> It must be a real browser tab. VS Code's built-in **Simple Browser** is an
-> iframe, and WebUSB does not work inside one. Use the globe icon, which opens a
-> proper tab.
-
-Rebuild, then just click **Flash** again — the page always serves the current
+Rebuild and run the command again; it always flashes the current
 `build/main.hex`.
 
-### If you would rather not run a server
+**Use Chrome, Edge or Opera.** Safari and Firefox do not implement WebUSB.
+
+### If that does not work
 
 Right-click **`build/main.hex`** in the Explorer, choose **Download**, and drop
-it onto <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>.
-That page also has ready-built examples if you just want to check your board and
-cable work.
+it onto <https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/>. That
+page also has ready-built examples for checking your board and cable.
 
 ## 5. Commit your work
 
