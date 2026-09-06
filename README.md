@@ -20,8 +20,8 @@ Everything below assumes you are working in *your* repository, not this one.
 
 | | Path | You install | Flashing | Debugging (F5) |
 |---|---|---|---|---|
-| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | **yes**, from the browser |
-| 🔵 | **[On your own machine](setup/local.md)** | VS Code + Python, then one command | plugged in, or browser | **yes** |
+| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | **[yes, from the browser](setup/debugging.md)** |
+| 🔵 | **[On your own machine](setup/local.md)** | VS Code + Python, then one command | plugged in, or browser | **[yes](setup/debugging.md)** |
 
 **Not sure?** Start with the browser. It needs nothing installed, works on a
 school laptop or a Chromebook, and you can move to a local install later without
@@ -43,6 +43,13 @@ There are ready-built examples in the picker, so you can flash `music` or
 **Working in a Codespace?** You do not have to download anything. Run the
 **Flash from here (serve flasher)** task and open the forwarded port — the page
 is then served from your Codespace with your own build already loaded.
+
+## Debug with breakpoints
+
+Set a breakpoint in `main.adb`, press **F5**, and step through your program on
+the real board — on **both** paths, including in a browser Codespace. See
+**[Debug with breakpoints](setup/debugging.md)** for the keys, the limits, and
+how it works.
 
 ## What is in here
 
@@ -93,4 +100,11 @@ flasher (**AIUnderstand.microbit-flasher**), which a Codespace installs into
 your browser by itself, and **Cortex-Debug** for F5 — installed in a Codespace,
 offered locally the first time you press F5. [Alire](https://alire.ada.dev/)
 supplies the toolchain.
+
+## Working on the template (maintainers)
+
+Building, testing and publishing the flasher and companion extensions is
+documented in **[setup/extensions.md](setup/extensions.md)**. Repository-wide
+working notes — the toolchain pins, the traps, the CI layout — are in
+`CLAUDE.md`.
 

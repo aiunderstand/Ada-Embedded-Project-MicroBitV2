@@ -158,14 +158,13 @@ Only one program can hold the port at a time.
 
 ## 8. Debug with breakpoints
 
-It uses the **Cortex-Debug** extension; the first time you press **F5**,
-VS Code offers to install it — accept. (A Codespace can do this too, through
-the browser; here the board is on your own USB port, so stepping is faster.)
+Set a breakpoint in `main.adb` and press **F5**. The first time, VS Code offers
+to install the **Cortex-Debug** extension — accept. The program stops on the
+line; F5 always debugs whatever you built last. Locally the board is on your own
+USB port, so stepping is faster than in a Codespace.
 
-Click in the margin of `main.adb` to set a breakpoint, then press **F5**. The
-program stops there and you can inspect variables and step through.
-
-F5 always debugs whatever you built last.
+Full guide, keys, limits and troubleshooting: **[Debug with
+breakpoints](debugging.md)**.
 
 ## 9. Commit your work
 
