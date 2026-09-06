@@ -35,6 +35,12 @@
             // Not "openPreview": VS Code's Simple Browser is an iframe and
             // WebUSB does not work there. It has to be a real browser tab.
             "onAutoForward": "notify"
+        },
+        // The companion's gdb port. Loopback only, and gdb is inside the
+        // container with it, so forwarding it would only produce a toast.
+        "3333": {
+            "label": "gdb (micro:bit debugger)",
+            "onAutoForward": "ignore"
         }
     },
 
@@ -66,6 +72,10 @@
                 // The flasher itself must never be listed here: a web extension
                 // installed into the container cannot start in the browser.
                 "AIUnderstand.microbit-companion",
+                // F5. Cortex-Debug starts arm-eabi-gdb in the container and
+                // connects it to the companion's port; the board is in the
+                // browser, and the flasher answers gdb over WebUSB.
+                "marus25.cortex-debug",
                 // The Ada language server. It is an extension pack and brings
                 // C/C++, SARIF Viewer and Live Preview with it; that is AdaCore's
                 // choice, not something this file can undo.

@@ -15,7 +15,7 @@
 //  mechanism the ESP-IDF Web extension uses. After the user picks the board,
 //  navigator.usb.getDevices() returns it here and flashing proceeds normally.
 
-/* global createUSBConnection */
+/* global createUSBConnection, GdbServer */
 
 const vscode = require("vscode");
 
@@ -274,12 +274,41 @@ async function readHex() {
   return text;
 }
 
+const usbAvailable = () => typeof navigator !== "undefined" && !!navigator.usb;
+
+/** The micro:bit this browser has already authorised, if any. Never prompts. */
+async function authorisedDevice() {
+  const devices = await navigator.usb.getDevices();
+  return devices.find((d) => d.vendorId === MICROBIT_VID);
+}
+
+/**
+ * The connection, if it still is one. Unplugging the board leaves the
+ * library's object behind with a status other than "Connected" -- its
+ * disconnect handler, installed by initialize(), records that -- and a
+ * re-plugged board is a new USBDevice, so such an object is dropped here and
+ * the next use reconnects instead of failing on a device Chrome has closed.
+ */
+function liveConnection() {
+  if (connection && connection.status !== "Connected") {
+    log(`the previous connection is ${connection.status}; it will be re-made`);
+    try {
+      connection.dispose?.();
+    } catch {
+      // nothing left to release
+    }
+    connection = null;
+    setConnected(false);
+  }
+  return connection;
+}
+
 /** Ensure we have a USB connection, authorising a device if needed. */
 async function ensureConnected() {
-  if (connection) {
+  if (liveConnection()) {
     return connection;
   }
-  if (typeof navigator === "undefined" || !navigator.usb) {
+  if (!usbAvailable()) {
     throw new Error(
       "This VS Code cannot reach USB devices. Flashing from here needs a " +
         "Chromium-based browser (Chrome, Edge or Opera). In desktop VS Code, " +
@@ -288,20 +317,38 @@ async function ensureConnected() {
   }
 
   // Already-authorised devices need no prompt.
-  const find = (list) => list.find((d) => d.vendorId === MICROBIT_VID);
-  let device = find(await navigator.usb.getDevices());
+  let device = await authorisedDevice();
   if (!device) {
     log("Asking you to choose the micro:bit...");
     await vscode.commands.executeCommand(
       "workbench.experimental.requestUsbDevice",
       { filters: [{ vendorId: MICROBIT_VID }] }
     );
-    device = find(await navigator.usb.getDevices());
+    device = await authorisedDevice();
   }
   if (!device) {
     throw new Error("No micro:bit was selected.");
   }
+  return connectTo(device);
+}
 
+/**
+ * Connect to a board this browser has already authorised, or return null.
+ * For the places that have no user gesture to spend on the picker: the
+ * reconnect at activation, and a debug session arriving through gdb.
+ */
+async function connectIfAuthorised() {
+  if (liveConnection()) {
+    return connection;
+  }
+  if (!usbAvailable()) {
+    return null;
+  }
+  const device = await authorisedDevice();
+  return device ? connectTo(device) : null;
+}
+
+async function connectTo(device) {
   // pauseOnHidden touches window/document, which do not exist in a worker.
   //
   // Left to itself the library asks for a device with
@@ -322,6 +369,11 @@ async function ensureConnected() {
   });
   usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
   usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
+  // Installs the library's WebUSB "disconnect" handler, which is what turns
+  // an unplugged board into a status other than "Connected" (worker-safe: it
+  // touches window only where one exists). Without it the object would
+  // claim to be connected to a device that no longer is.
+  await usb.initialize?.();
   await usb.connect();
   connection = usb;
   return usb;
@@ -343,6 +395,11 @@ async function cmdConnect() {
 }
 
 async function cmdDisconnect() {
+  if (gdb) {
+    // Otherwise the core is left halted on breakpoints nothing can clear.
+    log("Ending the debug session first.");
+    await cmdGdbDetach();
+  }
   const usb = connection;
   connection = null;
   setConnected(false);
@@ -418,9 +475,34 @@ async function runBuildTask() {
   return result;
 }
 
+/** Flash an Intel HEX text, with a progress notification. Ctrl+Alt+F and gdb's `load` both end here. */
+function flashHex(usb, hex) {
+  return vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: "Flashing micro:bit" },
+    async (progress) => {
+      let last = 0;
+      await usb.flash(async () => hex, {
+        // Partial flashing is a MakeCode feature that relies on that
+        // toolchain's flash layout; a GNAT-built hex must be flashed in full.
+        partial: false,
+        progress: (stage, fraction) => {
+          const pct = Math.round((fraction ?? 0) * 100);
+          progress.report({ increment: pct - last, message: String(stage) });
+          last = pct;
+        },
+      });
+    }
+  );
+}
+
 async function cmdFlash() {
   output.show(true);
   try {
+    // Flashing under gdb's feet would answer its pending `continue` with a
+    // stop mid-flash and leave it debugging a program that is no longer there.
+    if (gdb) {
+      throw new Error("A debug session is running. Stop it first (Shift+F5); F5 rebuilds and reflashes.");
+    }
     // The board first: Chrome shows the USB picker only while it is handling
     // the user's gesture, a window of about five seconds, and a full build is
     // longer than that. Asking now, straight from the keypress, keeps the first
@@ -439,22 +521,7 @@ async function cmdFlash() {
       );
     }
     const hex = await readHex();
-    await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Flashing micro:bit" },
-      async (progress) => {
-        let last = 0;
-        await usb.flash(async () => hex, {
-          // Partial flashing is a MakeCode feature that relies on that
-          // toolchain's flash layout; a GNAT-built hex must be flashed in full.
-          partial: false,
-          progress: (stage, fraction) => {
-            const pct = Math.round((fraction ?? 0) * 100);
-            progress.report({ increment: pct - last, message: String(stage) });
-            last = pct;
-          },
-        });
-      }
-    );
+    await flashHex(usb, hex);
     // mb.py records which project it staged; with "Choose project..." in
     // play, the student needs to see what actually went to the board.
     const project = await readTextIfPresent("build/last-project.txt");
@@ -474,6 +541,83 @@ async function cmdFlash() {
   }
 }
 
+// ------------------------------------------------------------- debugging
+//
+// F5 in a Codespace. arm-eabi-gdb runs in the Codespace, where the ELF is,
+// and talks to a TCP port the companion extension opens there. The companion
+// forwards every gdb packet to microbit.gdb.packet, and GdbServer
+// (gdbserver.js, bundled ahead of this file) answers it over the USB
+// connection the flasher already holds. VS Code routes a command to whichever
+// extension host registered it, which is how the Codespace half reaches the
+// browser half.
+
+let gdb = null; // the GdbServer while gdb is attached
+
+/**
+ * What GdbServer needs from the board, looked up on every call: the library
+ * replaces its device object when it reconnects to flash.
+ */
+function debugTarget() {
+  const dev = () => {
+    if (!connection || !connection.device) {
+      throw new Error("the micro:bit is not connected");
+    }
+    return connection.device;
+  };
+  return {
+    readMem32: (addr) => dev().adi.readMem32(addr),
+    writeMem32: (addr, value) => dev().adi.writeMem32(addr, value),
+    readBlock: (addr, words) => dev().adi.readBlock(addr, words),
+    writeBlock: (addr, words) => dev().adi.writeBlock(addr, words),
+    readCoreRegister: (sel) => dev().cortexM.readCoreRegister(sel),
+    writeCoreRegister: (sel, value) => dev().cortexM.writeCoreRegister(sel, value),
+    flash: (hex) => {
+      dev(); // the same "not connected" error as the others, before any toast
+      return flashHex(connection, hex);
+    },
+  };
+}
+
+async function cmdGdbAttach() {
+  output.show(true);
+  // No user gesture reaches this point -- F5 went through gdb, a socket and
+  // the companion -- so the picker cannot be shown from here. A board
+  // authorised earlier connects silently; otherwise say what to press.
+  if (!(await connectIfAuthorised())) {
+    throw new Error(
+      "Connect the micro:bit first: press Connect in the Serial view's header " +
+        "(or Ctrl+Alt+F), then start debugging again."
+    );
+  }
+  if (gdb) {
+    await gdb.detach();
+  }
+  gdb = new GdbServer(debugTarget(), { log });
+  await gdb.attach();
+  return "attached";
+}
+
+function cmdGdbPacket(body) {
+  if (!gdb) {
+    throw new Error("no debug session");
+  }
+  return gdb.handle(body);
+}
+
+async function cmdGdbInterrupt() {
+  if (gdb) {
+    await gdb.interrupt();
+  }
+}
+
+async function cmdGdbDetach() {
+  const session = gdb;
+  gdb = null;
+  if (session) {
+    await session.detach();
+  }
+}
+
 async function cmdStatus() {
   output.show(true);
   log("--- status ---");
@@ -489,6 +633,16 @@ async function cmdStatus() {
     }
   }
   log(`connection: ${connection ? connection.status : "none"}`);
+  log(`gdb: ${gdb ? (gdb.running ? "attached, program running" : "attached, program stopped") : "not attached"}`);
+  // The companion lives in the Codespace; this round trip is what every gdb
+  // packet costs, so it is the number to quote when stepping feels slow.
+  try {
+    const t0 = Date.now();
+    await vscode.commands.executeCommand("microbit.companion.ping");
+    log(`companion round trip: ${Date.now() - t0} ms`);
+  } catch {
+    log("companion: not reachable (desktop VS Code, or the companion is not installed)");
+  }
 }
 
 function activate(context) {
@@ -511,6 +665,12 @@ function activate(context) {
     vscode.commands.registerCommand("microbit.status", cmdStatus),
     vscode.commands.registerCommand("microbit.serial", openSerialConsole),
     vscode.commands.registerCommand("microbit.chooseProject", cmdChooseProject),
+    // For the companion, not for people: hidden from the command palette.
+    vscode.commands.registerCommand("microbit.gdb.attach", cmdGdbAttach),
+    vscode.commands.registerCommand("microbit.gdb.packet", cmdGdbPacket),
+    vscode.commands.registerCommand("microbit.gdb.interrupt", cmdGdbInterrupt),
+    vscode.commands.registerCommand("microbit.gdb.detach", cmdGdbDetach),
+    vscode.commands.registerCommand("microbit.gdb.ping", () => "pong"),
     vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
       { webviewOptions: { retainContextWhenHidden: true } })
   );
@@ -520,12 +680,9 @@ function activate(context) {
   // output starts flowing without the student doing anything.
   (async () => {
     try {
-      if (typeof navigator !== "undefined" && navigator.usb) {
-        const devices = await navigator.usb.getDevices();
-        if (devices.some((d) => d.vendorId === MICROBIT_VID)) {
-          log("Board already authorised; connecting...");
-          await ensureConnected();
-        }
+      if (usbAvailable() && (await authorisedDevice())) {
+        log("Board already authorised; connecting...");
+        await connectIfAuthorised();
       }
     } catch (err) {
       log(`(could not reconnect automatically: ${err.message})`);
@@ -543,6 +700,9 @@ function activate(context) {
 }
 
 function deactivate() {
+  if (gdb) {
+    gdb.detach().catch(() => {});
+  }
   if (connection) {
     connection.disconnect().catch(() => {});
   }
@@ -556,5 +716,8 @@ module.exports = {
     received: serialReceived,
     open: openSerialConsole,
     setConnection: (c) => { connection = c; },
+  },
+  _debug: {
+    setSession: (s) => { gdb = s; },
   },
 };

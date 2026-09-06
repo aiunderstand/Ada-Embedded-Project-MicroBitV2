@@ -1,8 +1,8 @@
 {
   "name": "microbit-companion",
   "displayName": "micro:bit Companion (Codespaces)",
-  "description": "Runs inside the Codespace and installs the micro:bit v2 Flasher into your browser, where it has to live",
-  "version": "0.1.0",
+  "description": "Runs inside the Codespace: installs the micro:bit v2 Flasher into your browser, and connects gdb to the board through it for F5",
+  "version": "0.1.1",
   "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
@@ -10,21 +10,34 @@
     "url": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2.git"
   },
   "homepage": "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2#readme",
-  "keywords": ["micro:bit", "microbit", "codespaces", "ada"],
+  "keywords": ["micro:bit", "microbit", "codespaces", "ada", "gdb", "debug"],
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": ["Other"],
   "main": "./extension.js",
   "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onDebugResolve:cortex-debug"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "microbit.companion.install",
         "title": "micro:bit: Install the flasher in this browser",
         "category": "micro:bit"
+      },
+      {
+        "command": "microbit.companion.ping",
+        "title": "micro:bit: (internal) companion ping",
+        "category": "micro:bit"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "microbit.companion.ping", "when": "false" }
+      ]
+    }
   }
 }

@@ -128,7 +128,27 @@ flash names it. Click again and choose **template** to go back to your own
 program. (The same picker is `micro:bit: Choose project to build and flash`
 in the command palette.)
 
-## 5. Commit your work
+## 5. Debug with breakpoints
+
+Click in the margin of `main.adb` to set a breakpoint, then press **F5**. That
+builds, flashes, and stops the program at the breakpoint. Step with **F10**,
+look at variables in the *Run and Debug* view, continue with **F5**; the
+Serial view keeps showing `Put_Line` output meanwhile.
+
+> The debugger runs in the Codespace, where your program's symbols are; the
+> board is in your browser. The flasher carries every debugger request between
+> the two over the same USB connection it flashes with, so each step travels to
+> the data centre and back — slower than on a local machine, fine for stepping
+> through a program.
+
+The board must be connected first. If F5 says *Connect the micro:bit first*,
+press the **plug** button in the Serial view's header (or Ctrl+Alt+F once) and
+press F5 again. The chip provides six breakpoints, and stepping over a
+procedure call borrows one, so keep it to five of your own; *watchpoints*
+(stop when a variable changes) are not available. The same limits apply on a
+local machine.
+
+## 6. Commit your work
 
 Codespaces are not backups. Commit whenever you finish something:
 
@@ -151,11 +171,18 @@ your free monthly hours. Go to <https://github.com/codespaces> and click the
 **You can come back to it.** The same menu reopens it with everything as you
 left it.
 
-**Debugging with breakpoints (F5) does not work here** — that needs a real USB
-connection to the board. Use `Put_Line` to print what is happening, or move to
-the [local install](local.md) later in the course.
+**F5 works here, through your browser.** Each step travels to the data centre
+and back, so it is slower than on a [local install](local.md); see
+[section 5](#5-debug-with-breakpoints).
 
 ## Troubleshooting
+
+**F5 says "Connect the micro:bit first".** The debugger cannot open the
+browser's device picker itself. Press the **plug** button in the Serial view's
+header (or Ctrl+Alt+F), then F5 again.
+
+**F5 says the flasher is not running in this browser.** The flasher has to be
+installed in your *browser*, not in the Codespace — see section 4.
 
 **The setup check shows `MISSING`.** Rebuild the container: press
 **Ctrl+Shift+P**, type `Rebuild Container`, and run it.

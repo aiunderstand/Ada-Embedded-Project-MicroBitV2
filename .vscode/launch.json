@@ -2,6 +2,11 @@
     // One configuration for every project. Whatever you built last is staged at
     // build/main.elf, so F5 always debugs the thing you just built and this file
     // never needs editing.
+    //
+    // It is also one configuration for every path. In a Codespace the companion
+    // extension rewrites "servertype" to "external" and points gdb at its own
+    // port: the board is in the browser, and the flasher answers gdb over
+    // WebUSB. Nothing to choose, nothing to edit.
     "version": "0.2.0",
     "configurations": [
         {
