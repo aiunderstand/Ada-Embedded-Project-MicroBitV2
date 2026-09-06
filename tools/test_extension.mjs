@@ -85,6 +85,14 @@ check(src.includes('"workbench.action.tasks.runTask"'),
 
 check((pkg.contributes.commands || []).some((c) => c.command === "microbit.serial"),
       "a command must open the serial console");
+// Ctrl+Shift+B runs the default build task at once, so the picker for
+// examples is reachable only through Tasks: Run Task -- unless the extension
+// offers it: a status-bar item naming the chosen project, click to choose.
+check((pkg.contributes.commands || []).some((c) => c.command === "microbit.chooseProject"),
+      "a command must open the project picker");
+check(src.includes('"Choose project..."') && /runTask",\s*CHOOSE_TASK/.test(src),
+      "the picker runs the Choose project... task through the workbench");
+check(/build\/project\.txt/.test(src), "the status-bar item reads build/project.txt, what mb.py will build");
 // Connect, Disconnect and Flash are native buttons in the view's header: a
 // click there is a real user gesture, which the USB picker requires.
 const titleMenu = (pkg.contributes.menus || {})["view/title"] || [];
@@ -139,7 +147,7 @@ try {
     mod, mod.exports, undefined);
   const subs = [];
   mod.exports.activate({ subscriptions: subs });
-  activated = subs.length >= 5;
+  activated = subs.length >= 6;
 } catch (e) {
   fail.push(`activate() threw in a DOM-less host: ${e.message}`);
 }

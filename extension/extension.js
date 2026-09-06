@@ -25,6 +25,7 @@ const HEX_PATH = "build/main.hex";
 let output;
 let connection = null;
 let status;
+let projectItem; // status bar: which project Ctrl+Alt+F builds and flashes
 
 function log(line) {
   output.appendLine(line);
@@ -356,6 +357,30 @@ async function cmdDisconnect() {
 }
 
 const BUILD_TASK = "Build";
+const CHOOSE_TASK = "Choose project..."; // tasks.json label; its input shows the list
+
+/** What mb.py will build next: build/project.txt, or the template. */
+async function refreshProjectItem() {
+  const chosen = (await readTextIfPresent("build/project.txt")) || "template";
+  projectItem.text = `$(folder) ${chosen}`;
+  projectItem.tooltip = `Ctrl+Alt+F builds and flashes: ${chosen}. Click to choose another project, or 'template' for your own program.`;
+  projectItem.show();
+}
+
+/**
+ * Run the "Choose project..." task and refresh the item when it ends. Run
+ * Build Task (Ctrl+Shift+B) would not show it: with a default build task VS
+ * Code runs that at once, no picker, and nobody finds "Tasks: Run Task".
+ */
+async function cmdChooseProject() {
+  const sub = vscode.tasks.onDidEndTaskProcess((e) => {
+    if (e.execution.task.name === CHOOSE_TASK) {
+      sub.dispose();
+      refreshProjectItem();
+    }
+  });
+  await vscode.commands.executeCommand("workbench.action.tasks.runTask", CHOOSE_TASK);
+}
 const BUILD_TIMEOUT_MS = 10 * 60 * 1000; // a cold Codespace build can take minutes
 
 /** Run the workspace "Build" task and wait for it; null when there is none. */
@@ -388,7 +413,9 @@ async function runBuildTask() {
   });
   await vscode.commands.executeCommand("workbench.action.tasks.runTask", BUILD_TASK);
   log(`Task "${BUILD_TASK}" started; waiting for it to finish...`);
-  return finished;
+  const result = await finished;
+  refreshProjectItem();
+  return result;
 }
 
 async function cmdFlash() {
@@ -470,15 +497,20 @@ function activate(context) {
   status.command = "microbit.flash";
   status.tooltip = "Build and flash to the micro:bit";
   setStatus("Flash micro:bit", false);
+  projectItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+  projectItem.command = "microbit.chooseProject";
+  refreshProjectItem();
 
   context.subscriptions.push(
     output,
     status,
+    projectItem,
     vscode.commands.registerCommand("microbit.connect", cmdConnect),
     vscode.commands.registerCommand("microbit.disconnect", cmdDisconnect),
     vscode.commands.registerCommand("microbit.flash", cmdFlash),
     vscode.commands.registerCommand("microbit.status", cmdStatus),
     vscode.commands.registerCommand("microbit.serial", openSerialConsole),
+    vscode.commands.registerCommand("microbit.chooseProject", cmdChooseProject),
     vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
       { webviewOptions: { retainContextWhenHidden: true } })
   );
