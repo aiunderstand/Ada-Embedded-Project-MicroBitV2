@@ -119,12 +119,14 @@ page also has ready-built examples for checking your board and cable.
 
 ## 4½. Try one of the examples
 
-The drivers library ships 46 example programs. Press **Ctrl+Shift+B**, pick
-**Choose project…**, and choose one — say `ravenscar/buttons`. That builds it
-and *remembers* it: from then on **Ctrl+Alt+F** builds and flashes that example,
-and the message after the flash names it. To go back to your own program,
-choose **template**. (*Build the file I'm looking at* does the same for whatever
-example's `main.adb` is open in the editor.)
+The drivers library ships 46 example programs. At the bottom-left of the
+window, next to **Flash micro:bit**, the status bar shows which project the
+flasher builds — `template` to begin with. **Click it**, pick an example (say
+`ravenscar/buttons`), and it is built and remembered: from then on
+**Ctrl+Alt+F** builds and flashes that example, and the message after the
+flash names it. Click again and choose **template** to go back to your own
+program. (The same picker is `micro:bit: Choose project to build and flash`
+in the command palette.)
 
 ## 5. Commit your work
 

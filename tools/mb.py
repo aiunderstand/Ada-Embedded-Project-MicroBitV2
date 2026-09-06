@@ -346,8 +346,9 @@ def probe_present() -> bool:
 def no_probe_hint() -> None:
     print(
         "\nmb: built fine, but no debug probe is visible here.\n"
-        "    In a Codespace or a Docker Desktop container there is no USB access.\n"
-        f"    Download {rel(BUILD / 'main.hex')} and drag it onto the MICROBIT drive."
+        "    In a Codespace there is no USB access: flash from the browser instead --\n"
+        "    press Ctrl+Alt+F (the micro:bit flasher extension), which builds and flashes.\n"
+        f"    Or download {rel(BUILD / 'main.hex')} and drag it onto the MICROBIT drive."
     )
 
 
