@@ -17,12 +17,12 @@ new Function("module", "exports", src)(mod, mod.exports);
 const { GdbServer, gdbInternals } = mod.exports;
 const { intelHex, fpComparator, hex32, parseHex32, rspEscape, rspUnescape } = gdbInternals;
 
-const DHCSR = 0xe000edf0, DEMCR = 0xe000edfc, AIRCR = 0xe000ed0c;
+const DHCSR = 0xe000edf0, DEMCR = 0xe000edfc, DFSR = 0xe000ed30, AIRCR = 0xe000ed0c;
 const FP_CTRL = 0xe0002000, FP_COMP0 = 0xe0002008;
-const S_HALT = 1 << 17, S_RESET_ST = 1 << 25;
+const S_HALT = 1 << 17, S_RESET_ST = 1 << 25, DFSR_BKPT = 1 << 1;
 
 class FakeBoard {
-  constructor({ comparators = 6 } = {}) {
+  constructor({ comparators = 6, faultOnResetRequest = false, ignoreReset = false } = {}) {
     this.mem = new Map();
     this.regs = new Array(17).fill(0);
     this.regs[13] = 0x20010000;
@@ -30,7 +30,10 @@ class FakeBoard {
     this.halted = false;
     this.resetSeen = false;
     this.fpEnabled = false;
+    this.dfsr = 0;            // sticky halt reasons, write-one-to-clear
     this.comparators = comparators;
+    this.faultOnResetRequest = faultOnResetRequest; // the AIRCR write resets, then faults
+    this.ignoreReset = ignoreReset;                 // the AIRCR write does nothing
     this.writes = [];        // every [addr, value] written, in order
     this.flashed = null;     // the hex handed to flash()
     this.stopOnResume = null; // "a breakpoint at this address": halt as soon as the core runs
@@ -46,8 +49,10 @@ class FakeBoard {
       return v;
     }
     if (addr === FP_CTRL) {
+      // NUM_CODE[3:0] in bits 7:4, NUM_CODE[6:4] in bits 14:12 (ARMv7-M C1.11).
       return ((this.comparators & 0xf) << 4) | (((this.comparators >> 4) & 7) << 12) | (this.fpEnabled ? 1 : 0);
     }
+    if (addr === DFSR) return this.dfsr;
     return this.mem.get(addr) ?? 0;
   }
   async writeMem32(addr, v) {
@@ -60,16 +65,21 @@ class FakeBoard {
       else if (v & 4) { this.regs[15] += 2; this.halted = true; }
       else {
         this.halted = false;
-        if (this.stopOnResume !== null) { this.regs[15] = this.stopOnResume; this.stopOnResume = null; this.halted = true; }
+        if (this.stopOnResume !== null) {
+          this.regs[15] = this.stopOnResume; this.stopOnResume = null;
+          this.halted = true; this.dfsr |= DFSR_BKPT;
+        }
       }
       return;
     }
+    if (addr === DFSR) { this.dfsr &= ~v; return; }
     if (addr === AIRCR) {
-      if ((v >>> 16) === 0x05fa && (v & 4)) {
+      if ((v >>> 16) === 0x05fa && (v & 4) && !this.ignoreReset) {
         this.resetSeen = true;
         this.regs[15] = 0x100;
         this.halted = ((this.mem.get(DEMCR) ?? 0) & 1) !== 0;   // VC_CORERESET
         this.fpEnabled = false;
+        if (this.faultOnResetRequest) throw new Error("transfer fault: the DP reset under the write");
       }
       return;
     }
@@ -150,7 +160,7 @@ check(logged.some((l) => /6 hardware breakpoints/.test(l)), "and reported");
 
 // -------------------------------------------------------------- queries
 const supported = await gdb.handle("qSupported:multiprocess+;swbreak+;xmlRegisters=i386");
-for (const f of ["PacketSize=4000", "QStartNoAckMode+", "qXfer:features:read+", "qXfer:memory-map:read+", "vContSupported+"]) {
+for (const f of ["PacketSize=4000", "QStartNoAckMode+", "qXfer:features:read+", "qXfer:memory-map:read+", "vContSupported+", "hwbreak+"]) {
   check(supported.split(";").includes(f), `qSupported advertises ${f}`);
 }
 check(await gdb.handle("QStartNoAckMode") === "OK", "no-ack mode is accepted");
@@ -197,8 +207,10 @@ check(await gdb.handle("M20000001,2:aabb") === "OK" && board.mem.get(0x20000000)
 check(await gdb.handle("X20000004,4:" + rspEscape(Uint8Array.from([0x23, 0x24, 0x7d, 0x2a]))) === "OK"
       && board.mem.get(0x20000004) === 0x2a7d2423, "X takes escaped binary");
 check(await gdb.handle("X20000000,0:") === "OK", "gdb's empty X probe is fine");
+check(await gdb.handle("X0,0:") === "OK", "even at address 0, which is flash: nothing is written");
 check(await gdb.handle("M100,4:00000000") === "E01", "flash is not writable as memory: load does that");
 check(await gdb.handle("m30000000,4") === "E01", "a bus fault becomes an error reply, not a dead session");
+check(await gdb.handle("mfffffffc,8") === "E01", "a read past the end of the address space is refused, not wrapped");
 
 // ---------------------------------------------------------- breakpoints
 check(await gdb.handle("Z0,1234,2") === "OK" && board.wrote(FP_COMP0, 0x40001235), "Z0 lands in a comparator: the code is in flash");
@@ -216,10 +228,13 @@ check(gdb.breakpoints.size === 0, "all removed");
 
 // ------------------------------------------------------------ execution
 board.stopOnResume = 0x1240;
-check(await gdb.handle("c") === "T05thread:1;" && board.regs[15] === 0x1240 && board.halted, "continue returns when the core halts at a breakpoint");
+check(await gdb.handle("c") === "T05hwbreak:;thread:1;" && board.regs[15] === 0x1240 && board.halted,
+      "continue returns when the core halts at a breakpoint, and says a breakpoint did it (hwbreak+ was promised)");
 check(!gdb.running, "and the server knows it is stopped");
+check(await gdb.handle("?") === "T05hwbreak:;thread:1;", "? repeats that");
 board.writes.length = 0;
-check(await gdb.handle("s") === "T05thread:1;" && board.regs[15] === 0x1242, "a step moves one instruction");
+check(await gdb.handle("s") === "T05thread:1;" && board.regs[15] === 0x1242,
+      "a step moves one instruction, and is not reported as a breakpoint: the halt reasons were cleared first");
 {
   const dhcsr = board.writes.filter(([a]) => a === DHCSR).map(([, v]) => v & 0xf);
   check(dhcsr.join(",") === "11,13,3", "step: mask interrupts while halted, step with them masked, unmask");
@@ -236,9 +251,13 @@ check(await gdb.handle("?") === "T02thread:1;", "? repeats the last stop reason"
 
 // ---------------------------------------------------------------- resets
 board.mem.set(DEMCR, 0x01000000);
+await gdb.handle("Z0,1240,2");
+board.writes.length = 0;
 check(await gdb.handle("qRcmd," + hexOf("reset halt")) === "OK", "monitor reset halt");
 check(board.halted && board.regs[15] === 0x100, "the core is caught at the reset vector");
 check(board.mem.get(DEMCR) === 0x01000000, "DEMCR is put back afterwards (VC_CORERESET off)");
+check([0, 1, 2, 3, 4, 5].every((i) => board.wrote(FP_COMP0 + 4 * i, 0)) && gdb.breakpoints.size === 0,
+      "every comparator is cleared after a reset: the hardware is made to match the empty table, not assumed to");
 check(await gdb.handle("qRcmd," + hexOf("reset")) === "OK" && !board.halted, "monitor reset lets it run");
 check(await gdb.handle("qRcmd," + hexOf("halt")) === "OK" && board.halted, "monitor halt");
 check(/unknown monitor command: frobnicate/.test(Buffer.from(await gdb.handle("qRcmd," + hexOf("frobnicate")), "hex").toString()),
@@ -276,6 +295,34 @@ check(await gdb.handle("k") === null, "kill gets no reply");
 const second = new GdbServer(new FakeBoard({ comparators: 0 }), { log: () => {} });
 await second.attach();
 check(await second.handle("Z0,1000,2") === "E01", "a unit with no comparators refuses cleanly");
+
+// FP_CTRL splits NUM_CODE across bits 14:12 and 7:4. This chip has 6, so the
+// high bits are zero and a wrong decode of them passed on real silicon.
+const wide = new GdbServer(new FakeBoard({ comparators: 18 }), { log: () => {} });
+await wide.attach();
+check(wide.numComparators === 16, `NUM_CODE[6:4] is decoded from bits 14:12 (18 comparators, capped at 16; got ${wide.numComparators})`);
+
+// A reset can fault the very transfer that requests it; the reset still
+// happens, and the server must carry on to the poll rather than give up.
+{
+  const lines = [];
+  const b = new FakeBoard({ faultOnResetRequest: true });
+  const g = new GdbServer(b, { log: (l) => lines.push(l), pollMs: 1 });
+  await g.attach();
+  b.mem.set(DEMCR, 0x01000000);
+  check(await g.handle("qRcmd," + hexOf("reset halt")) === "OK", "a faulting reset request is tolerated");
+  check(b.halted && b.regs[15] === 0x100 && b.mem.get(DEMCR) === 0x01000000, "the core is at the vector and DEMCR is restored");
+  check(lines.some((l) => /reset request faulted/.test(l)), "and the fault is logged, not hidden");
+}
+// And when the reset never happens, the error must not leave the halt-at-vector bit set.
+{
+  const b = new FakeBoard({ ignoreReset: true });
+  const g = new GdbServer(b, { log: () => {}, pollMs: 1 });
+  await g.attach();
+  b.mem.set(DEMCR, 0x01000000);
+  check(await g.handle("qRcmd," + hexOf("reset halt")) === "E01", "a reset that never happens is an error");
+  check(b.mem.get(DEMCR) === 0x01000000, "with VC_CORERESET cleared again, so the next plain reset runs the program");
+}
 
 if (fail.length) {
   console.error("FAIL");

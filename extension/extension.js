@@ -282,9 +282,30 @@ async function authorisedDevice() {
   return devices.find((d) => d.vendorId === MICROBIT_VID);
 }
 
+/**
+ * The connection, if it still is one. Unplugging the board leaves the
+ * library's object behind with a status other than "Connected" -- its
+ * disconnect handler, installed by initialize(), records that -- and a
+ * re-plugged board is a new USBDevice, so such an object is dropped here and
+ * the next use reconnects instead of failing on a device Chrome has closed.
+ */
+function liveConnection() {
+  if (connection && connection.status !== "Connected") {
+    log(`the previous connection is ${connection.status}; it will be re-made`);
+    try {
+      connection.dispose?.();
+    } catch {
+      // nothing left to release
+    }
+    connection = null;
+    setConnected(false);
+  }
+  return connection;
+}
+
 /** Ensure we have a USB connection, authorising a device if needed. */
 async function ensureConnected() {
-  if (connection) {
+  if (liveConnection()) {
     return connection;
   }
   if (!usbAvailable()) {
@@ -317,7 +338,7 @@ async function ensureConnected() {
  * reconnect at activation, and a debug session arriving through gdb.
  */
 async function connectIfAuthorised() {
-  if (connection) {
+  if (liveConnection()) {
     return connection;
   }
   if (!usbAvailable()) {
@@ -348,6 +369,11 @@ async function connectTo(device) {
   });
   usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
   usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
+  // Installs the library's WebUSB "disconnect" handler, which is what turns
+  // an unplugged board into a status other than "Connected" (worker-safe: it
+  // touches window only where one exists). Without it the object would
+  // claim to be connected to a device that no longer is.
+  await usb.initialize?.();
   await usb.connect();
   connection = usb;
   return usb;
@@ -369,6 +395,11 @@ async function cmdConnect() {
 }
 
 async function cmdDisconnect() {
+  if (gdb) {
+    // Otherwise the core is left halted on breakpoints nothing can clear.
+    log("Ending the debug session first.");
+    await cmdGdbDetach();
+  }
   const usb = connection;
   connection = null;
   setConnected(false);
@@ -467,6 +498,11 @@ function flashHex(usb, hex) {
 async function cmdFlash() {
   output.show(true);
   try {
+    // Flashing under gdb's feet would answer its pending `continue` with a
+    // stop mid-flash and leave it debugging a program that is no longer there.
+    if (gdb) {
+      throw new Error("A debug session is running. Stop it first (Shift+F5); F5 rebuilds and reflashes.");
+    }
     // The board first: Chrome shows the USB picker only while it is handling
     // the user's gesture, a window of about five seconds, and a full build is
     // longer than that. Asking now, straight from the keypress, keeps the first
@@ -535,7 +571,10 @@ function debugTarget() {
     writeBlock: (addr, words) => dev().adi.writeBlock(addr, words),
     readCoreRegister: (sel) => dev().cortexM.readCoreRegister(sel),
     writeCoreRegister: (sel, value) => dev().cortexM.writeCoreRegister(sel, value),
-    flash: (hex) => flashHex(connection, hex),
+    flash: (hex) => {
+      dev(); // the same "not connected" error as the others, before any toast
+      return flashHex(connection, hex);
+    },
   };
 }
 
@@ -677,5 +716,8 @@ module.exports = {
     received: serialReceived,
     open: openSerialConsole,
     setConnection: (c) => { connection = c; },
+  },
+  _debug: {
+    setSession: (s) => { gdb = s; },
   },
 };

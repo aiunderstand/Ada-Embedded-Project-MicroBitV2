@@ -29,6 +29,7 @@ const GDB_PACKET_SIZE = 0x4000;
 // Cortex-M debug system registers.
 const DHCSR = 0xe000edf0;       // Debug Halting Control and Status
 const DEMCR = 0xe000edfc;       // Debug Exception and Monitor Control
+const DFSR = 0xe000ed30;        // Debug Fault Status: why the core halted; write ones to clear
 const AIRCR = 0xe000ed0c;       // Application Interrupt and Reset Control
 const DBGKEY = 0xa05f0000;      // must accompany every DHCSR write
 const C_DEBUGEN = 1 << 0;
@@ -37,6 +38,8 @@ const C_STEP = 1 << 2;
 const C_MASKINTS = 1 << 3;
 const S_HALT = 1 << 17;
 const S_RESET_ST = 1 << 25;     // sticky: a reset happened since the last DHCSR read
+const DFSR_BKPT = 1 << 1;       // a BKPT instruction or an FPB match
+const DFSR_ALL = 0x1f;          // every sticky halt-reason flag
 const VC_CORERESET = 1 << 0;    // DEMCR: halt at the reset vector
 const AIRCR_VECTKEY = 0x05fa0000;
 const AIRCR_SYSRESETREQ = 1 << 2;
@@ -228,7 +231,7 @@ class GdbServer {
     this.interruptRequested = false;
     this.running = false;
     this.flashSegments = [];       // {addr, data} from vFlashWrite, until vFlashDone
-    this.stopSignal = SIGTRAP;
+    this.lastStop = this.stopReply(SIGTRAP, false);
   }
 
   // ----------------------------------------------------------- lifecycle
@@ -236,13 +239,13 @@ class GdbServer {
   /** gdb has connected: halt the core, size and arm the breakpoint unit. */
   async attach() {
     await this.halt();
+    // NUM_CODE is split: bits 14:12 carry [6:4], bits 7:4 carry [3:0].
     const ctrl = await this.t.readMem32(FP_CTRL);
-    this.numComparators = Math.min(((ctrl >>> 12) & 0x70) | ((ctrl >>> 4) & 0xf), FP_MAX_COMPARATORS);
+    this.numComparators = Math.min(((ctrl >>> 8) & 0x70) | ((ctrl >>> 4) & 0xf), FP_MAX_COMPARATORS);
     await this.t.writeMem32(FP_CTRL, FP_CTRL_KEY | FP_CTRL_ENABLE);
-    for (let i = 0; i < this.numComparators; i++) await this.t.writeMem32(FP_COMP0 + 4 * i, 0);
-    this.breakpoints.clear();
+    await this.forgetBreakpoints();
     this.attached = true;
-    this.stopSignal = SIGTRAP;
+    this.lastStop = this.stopReply(SIGTRAP, false);
     this.log(`gdb attached; ${this.numComparators} hardware breakpoints available`);
   }
 
@@ -275,7 +278,9 @@ class GdbServer {
     await this.waitHalted(1000, "halt");
   }
 
+  /** Run. The halt-reason flags are cleared first, so the next stop reports its own cause. */
   async resume() {
+    await this.t.writeMem32(DFSR, DFSR_ALL);
     await this.t.writeMem32(DHCSR, DBGKEY | C_DEBUGEN);
   }
 
@@ -293,11 +298,12 @@ class GdbServer {
    * the step lands in the runtime instead of on the next line.
    */
   async step() {
+    await this.t.writeMem32(DFSR, DFSR_ALL);
     await this.t.writeMem32(DHCSR, DBGKEY | C_DEBUGEN | C_HALT | C_MASKINTS);
     await this.t.writeMem32(DHCSR, DBGKEY | C_DEBUGEN | C_MASKINTS | C_STEP);
     await this.waitHalted(2000, "a single step");
     await this.t.writeMem32(DHCSR, DBGKEY | C_DEBUGEN | C_HALT);
-    return this.stopReply(SIGTRAP);
+    return this.stopReply(SIGTRAP, false);
   }
 
   /** Run until a breakpoint halts the core or gdb interrupts. */
@@ -308,11 +314,15 @@ class GdbServer {
     try {
       for (;;) {
         if (!this.attached) return "";
-        if (await this.isHalted()) return this.stopReply(SIGTRAP);
+        if (await this.isHalted()) {
+          // qSupported promised hwbreak reporting, so say when a breakpoint did it.
+          const dfsr = await this.t.readMem32(DFSR);
+          return this.stopReply(SIGTRAP, (dfsr & DFSR_BKPT) !== 0);
+        }
         if (this.interruptRequested) {
           await this.t.writeMem32(DHCSR, DBGKEY | C_DEBUGEN | C_HALT);
           await this.waitHalted(1000, "an interrupt");
-          return this.stopReply(SIGINT);
+          return this.stopReply(SIGINT, false);
         }
         await sleep(this.pollMs);
       }
@@ -321,41 +331,69 @@ class GdbServer {
     }
   }
 
-  /** System reset with the core caught at the reset vector. */
-  async resetHalt() {
-    await this.halt();
-    const demcr = await this.t.readMem32(DEMCR);
-    await this.t.writeMem32(DEMCR, (demcr | VC_CORERESET) >>> 0);
-    await this.t.writeMem32(AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
+  /**
+   * Request a system reset and wait until it has happened. The write that
+   * asks for it can itself come back as a transfer fault -- the DP is being
+   * reset under the transfer's feet; pyocd tolerates exactly this -- and the
+   * library clears the sticky error before rethrowing, so the poll can go on.
+   */
+  async systemReset() {
+    try {
+      await this.t.writeMem32(AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
+    } catch (err) {
+      this.log(`the reset request faulted (${err.message}); checking whether the reset happened`);
+    }
     const t0 = Date.now();
     while (!((await this.t.readMem32(DHCSR)) & S_RESET_ST)) {
       if (Date.now() - t0 > 1000) throw new Error("the core did not reset");
       await sleep(this.pollMs);
     }
-    await this.waitHalted(1000, "reset");
-    await this.t.writeMem32(DEMCR, (demcr & ~VC_CORERESET) >>> 0);
-    // A reset may clear the breakpoint unit; gdb re-inserts its breakpoints
-    // before resuming, and insertBreakpoint re-enables the unit each time.
-    this.breakpoints.clear();
+  }
+
+  /** System reset with the core caught at the reset vector. */
+  async resetHalt() {
+    await this.halt();
+    const demcr = await this.t.readMem32(DEMCR);
+    await this.t.writeMem32(DEMCR, (demcr | VC_CORERESET) >>> 0);
+    try {
+      await this.systemReset();
+      await this.waitHalted(1000, "reset");
+    } finally {
+      // Whatever happened, a later plain reset must not halt at the vector.
+      await this.t.writeMem32(DEMCR, (demcr & ~VC_CORERESET) >>> 0);
+    }
+    await this.forgetBreakpoints();
   }
 
   /** System reset with the program running. */
   async resetRun() {
     const demcr = await this.t.readMem32(DEMCR);
     await this.t.writeMem32(DEMCR, (demcr & ~VC_CORERESET) >>> 0);
-    await this.t.writeMem32(AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
+    await this.forgetBreakpoints();
+    await this.systemReset();
+  }
+
+  /**
+   * Make the hardware match an empty breakpoint table. After a reset or a
+   * flash the unit's state is not known -- comparators may survive a system
+   * reset -- and gdb re-inserts its breakpoints before it resumes, so the
+   * only safe state is none armed.
+   */
+  async forgetBreakpoints() {
+    for (let i = 0; i < this.numComparators; i++) await this.t.writeMem32(FP_COMP0 + 4 * i, 0);
     this.breakpoints.clear();
   }
 
-  stopReply(signal) {
-    this.stopSignal = signal;
-    return `T${hex2(signal)}thread:1;`;
+  stopReply(signal, hwbreak) {
+    this.lastStop = `T${hex2(signal)}${hwbreak ? "hwbreak:;" : ""}thread:1;`;
+    return this.lastStop;
   }
 
   // ------------------------------------------------------------ memory
 
   async readMemory(addr, len) {
     if (len === 0) return new Uint8Array(0);
+    if (addr + len > 0x100000000) throw new Error("address beyond the end of the address space");
     const start = align4(addr);
     const words = (alignUp4(addr + len) - start) / 4;
     const data = words === 1
@@ -366,6 +404,7 @@ class GdbServer {
 
   async writeMemory(addr, bytes) {
     if (bytes.length === 0) return;
+    if (addr + bytes.length > 0x100000000) throw new Error("address beyond the end of the address space");
     if (addr < FLASH_BASE + FLASH_SIZE) {
       throw new Error("flash is programmed by `load`, not by memory writes");
     }
@@ -424,7 +463,7 @@ class GdbServer {
     // The library's flash ends by resetting the board to run the program;
     // gdb believes the core is still stopped, so make that true again.
     await this.halt();
-    this.breakpoints.clear();
+    await this.forgetBreakpoints();
     this.log("Flashed.");
   }
 
@@ -448,7 +487,7 @@ class GdbServer {
     const rest = body.slice(1);
     switch (cmd) {
       case "!": return "OK";
-      case "?": return this.stopReply(this.stopSignal);
+      case "?": return this.lastStop;
       case "H": return "OK";
       case "T": return "OK";
       case "D": await this.detach(); return "OK";

@@ -143,8 +143,10 @@ Serial view keeps showing `Put_Line` output meanwhile.
 
 The board must be connected first. If F5 says *Connect the micro:bit first*,
 press the **plug** button in the Serial view's header (or Ctrl+Alt+F once) and
-press F5 again. Six breakpoints can be set at a time — that is what the chip
-provides — and *watchpoints* (stop when a variable changes) are not available.
+press F5 again. The chip provides six breakpoints, and stepping over a
+procedure call borrows one, so keep it to five of your own; *watchpoints*
+(stop when a variable changes) are not available. The same limits apply on a
+local machine.
 
 ## 6. Commit your work
 

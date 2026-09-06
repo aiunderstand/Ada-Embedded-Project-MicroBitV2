@@ -22,7 +22,7 @@ const net = require("net");
 const FLASHER = "AIUnderstand.microbit-flasher";
 const DOCS = "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2/blob/main/setup/codespace.md";
 const DONE_KEY = "microbit.flasherInstalled";
-const GDB_PORT = 3333; // what Cortex-Debug's gdbTarget names; OpenOCD's habit
+const GDB_PORT = 3333; // OpenOCD's habit, so it reads familiarly; any free port will do
 
 let output = null;
 
@@ -75,6 +75,10 @@ async function ensureFlasher(context, { force = false } = {}) {
 // `continue` is still waiting for its reply, so it takes its own command.
 
 const RSP_INTERRUPT = 0x03;
+const DRAIN_MS = 2000;   // how long a closing session waits for the browser's last reply
+const ATTACH_MS = 15000; // how long a closing session waits for an attach still in flight
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function rspChecksum(bytes) {
   let sum = 0;
@@ -105,27 +109,43 @@ function explainAttachFailure(err) {
 /** One gdb connection, start to finish. */
 async function serveGdb(socket, { commands, log: logLine, showError }) {
   socket.setNoDelay(true);
-  const t0 = Date.now();
-  try {
-    await commands.executeCommand("microbit.gdb.attach");
-  } catch (err) {
-    const message = explainAttachFailure(err);
-    logLine(message);
-    showError(message);
-    socket.destroy();
-    return;
-  }
-  logLine(`gdb connected; the browser answered in ${Date.now() - t0} ms`);
-
   let buffer = Buffer.alloc(0);
   let noAck = false;
   let lastReply = null;            // resent when gdb answers '-'
-  let queue = Promise.resolve();   // packets are answered in order; a `continue` blocks the rest
+  let closed = false;
+  // Listeners go on first: a socket that dies while the browser is still
+  // attaching must neither throw (an 'error' with no listener is an uncaught
+  // exception in the extension host) nor be missed.
+  const gone = new Promise((resolve) => {
+    socket.on("error", (err) => logLine(`gdb socket: ${err.message}`));
+    socket.on("close", () => { closed = true; resolve(); });
+  });
   const send = (bytes) => {
     if (!socket.destroyed) socket.write(bytes);
   };
+
+  // The browser attaches first (it may have to open the USB device, halt the
+  // core and arm the breakpoint unit), and every reply waits behind that.
+  // Acks do not: gdb gets its '+' at once, so it never retransmits while the
+  // attach is under way, and only its wait for the first reply spans it.
+  const t0 = Date.now();
+  const attached = commands.executeCommand("microbit.gdb.attach").then(
+    () => {
+      logLine(`gdb connected; the browser attached in ${Date.now() - t0} ms`);
+      return true;
+    },
+    (err) => {
+      const message = explainAttachFailure(err);
+      logLine(message);
+      showError(message);
+      socket.destroy();
+      return false;
+    }
+  );
+  let queue = attached;            // packets are answered in order; a `continue` blocks the rest
   const handle = (body) => {
-    queue = queue.then(async () => {
+    queue = queue.then(async (ok) => {
+      if (ok === false || closed) return ok;
       let reply;
       try {
         reply = await commands.executeCommand("microbit.gdb.packet", body);
@@ -133,10 +153,11 @@ async function serveGdb(socket, { commands, log: logLine, showError }) {
         logLine(`gdb: "${body.slice(0, 20)}" failed in the browser: ${err.message}`);
         reply = "E01";
       }
-      if (reply === null || reply === undefined) return; // "k": gdb expects silence
+      if (reply === null || reply === undefined) return ok; // "k": gdb expects silence
       lastReply = rspFrame(reply);
       send(lastReply);
       if (body === "QStartNoAckMode" && reply === "OK") noAck = true;
+      return ok;
     });
   };
 
@@ -169,19 +190,29 @@ async function serveGdb(socket, { commands, log: logLine, showError }) {
     }
   });
 
-  await new Promise((resolve) => {
-    socket.on("error", (err) => logLine(`gdb socket: ${err.message}`));
-    socket.on("close", resolve);
-  });
-  await queue.catch(() => {});
-  await commands.executeCommand("microbit.gdb.detach").catch((err) => logLine(`detach: ${err.message}`));
+  await gone;
+  // Release the browser BEFORE draining the queue. A pending `continue`
+  // returns only when the core halts, gdb interrupts, or the server detaches;
+  // gdb is gone, so detach is the only one of those that will ever happen,
+  // and waiting for the queue first would wait forever -- with this session
+  // never ending and every later gdb refused as "a second connection".
+  const didAttach = await Promise.race([attached, sleep(ATTACH_MS).then(() => false)]);
+  if (didAttach) {
+    await commands.executeCommand("microbit.gdb.detach").catch((err) => logLine(`detach: ${err.message}`));
+  }
+  await Promise.race([queue.catch(() => {}), sleep(DRAIN_MS)]);
   logLine("gdb disconnected");
 }
 
 /**
- * Listen for gdb on 127.0.0.1:port. The arguments exist so that
- * tools/test_companion.mjs can hand in a port of its own and a stand-in for
- * vscode.commands; the extension passes nothing.
+ * Listen for gdb on the loopback interface, on GDB_PORT when it is free and
+ * on any free port otherwise: a reloaded browser tab gets a new extension
+ * host while the old one, port and all, lingers for minutes. Whichever port
+ * it is, the launch configuration is pointed at it (see the provider below).
+ *
+ * The arguments exist so that tools/test_companion.mjs can hand in a port of
+ * its own and a stand-in for vscode.commands; the extension passes nothing.
+ * Returns { server, ready }: ready resolves to the port actually bound.
  */
 function startGdbRelay({
   port = GDB_PORT,
@@ -201,29 +232,64 @@ function startGdbRelay({
       if (client === socket) client = null;
     });
   });
-  server.on("error", (err) => {
-    logLine(`gdb server: ${err.message}`);
-    showError(`micro:bit: could not open port ${port} for gdb (${err.message}); F5 will not work until it is free.`);
+  const ready = new Promise((resolve, reject) => {
+    let fellBack = false;
+    server.on("listening", () => {
+      const bound = server.address().port;
+      logLine(`gdb server listening on 127.0.0.1:${bound}`);
+      resolve(bound);
+    });
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE" && !fellBack) {
+        fellBack = true;
+        logLine(`port ${port} is taken (another window of this Codespace, most likely); using a free port instead`);
+        server.listen(0, "127.0.0.1");
+        return;
+      }
+      logLine(`gdb server: ${err.message}`);
+      showError(`micro:bit: could not open a port for gdb (${err.message}); F5 will not work in this window.`);
+      reject(err);
+    });
   });
-  server.listen(port, "127.0.0.1", () => logLine(`gdb server listening on 127.0.0.1:${server.address().port}`));
-  return server;
+  ready.catch(() => {}); // the provider reports it when F5 is pressed; nobody else need
+  server.listen(port, "127.0.0.1");
+  return { server, ready };
 }
 
 /**
  * F5 in the browser means the browser is the probe. The one launch
  * configuration in .vscode/launch.json says pyocd, which is right on a
  * student's own machine; here it is rewritten to the external server above,
- * so launch.json needs no second entry and the student nothing to choose.
+ * on whatever port it got, so launch.json needs no second entry and the
+ * student nothing to choose.
  */
-const browserProbeProvider = {
-  resolveDebugConfiguration(folder, config) {
-    if (config && config.servertype === "pyocd") {
-      log(`"${config.name}": using the board in your browser as the probe (gdb server on port ${GDB_PORT})`);
-      return { ...config, servertype: "external", gdbTarget: `localhost:${GDB_PORT}` };
-    }
-    return config;
-  },
-};
+function makeBrowserProbeProvider(ready, {
+  log: logLine = log,
+  showError = (m) => vscode.window.showErrorMessage(m),
+} = {}) {
+  return {
+    async resolveDebugConfiguration(folder, config) {
+      if (!config || config.servertype !== "pyocd") return config;
+      let port;
+      try {
+        port = await ready;
+      } catch (err) {
+        showError(`micro:bit: F5 needs the companion's gdb port, which could not be opened (${err.message}).`);
+        return undefined; // cancels the launch quietly; the message says why
+      }
+      logLine(`"${config.name}": using the board in your browser as the probe (gdb server on port ${port})`);
+      return {
+        ...config,
+        servertype: "external",
+        gdbTarget: `localhost:${port}`,
+        // gdb gives a reply two seconds, three times over, before it gives
+        // up. Every reply here crosses to the browser and back, and the
+        // first one waits for the USB device to open, so give it room.
+        debuggerArgs: [...(config.debuggerArgs || []), "-ex", "set remotetimeout 20"],
+      };
+    },
+  };
+}
 
 function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit companion");
@@ -235,10 +301,10 @@ function activate(context) {
     vscode.commands.registerCommand("microbit.companion.ping", () => "pong")
   );
   if (vscode.env.uiKind === vscode.UIKind.Web) {
-    const server = startGdbRelay();
+    const relay = startGdbRelay();
     context.subscriptions.push(
-      { dispose: () => server.close() },
-      vscode.debug.registerDebugConfigurationProvider("cortex-debug", browserProbeProvider)
+      { dispose: () => relay.server.close() },
+      vscode.debug.registerDebugConfigurationProvider("cortex-debug", makeBrowserProbeProvider(relay.ready))
     );
   }
   return ensureFlasher(context);
@@ -250,5 +316,5 @@ module.exports = {
   activate,
   deactivate,
   // For tools/test_companion.mjs.
-  _gdb: { startGdbRelay, browserProbeProvider, explainAttachFailure, rspFrame, GDB_PORT },
+  _gdb: { startGdbRelay, makeBrowserProbeProvider, explainAttachFailure, rspFrame, GDB_PORT },
 };

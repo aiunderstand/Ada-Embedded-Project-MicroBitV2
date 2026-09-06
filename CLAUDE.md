@@ -158,7 +158,7 @@ skipped; `code serve-web` did.
 
 ## Codespaces
 
-A Codespace has **no USB**. Three consequences:
+A Codespace has **no USB**. Five consequences:
 
 1. `mb.py flash` cannot work there; it detects this and says so.
 2. Flashing goes through the **VS Code web extension** in `extension/`. It is a
@@ -190,8 +190,10 @@ A Codespace has **no USB**. Three consequences:
    above). `setup/publishing.md` is the lecturer's publishing procedure.
 
 5. **F5 debugs through the browser.** Cortex-Debug (installed in the
-   container) starts `arm-eabi-gdb` there and connects it to `localhost:3333`,
-   where the companion listens. Every gdb packet is forwarded, as one
+   container) starts `arm-eabi-gdb` there and connects it to the companion's
+   loopback port (3333 when free; a reloaded tab leaves the old extension
+   host holding it for minutes, so any free port otherwise, and the launch
+   rewrite carries the real one). Every gdb packet is forwarded, as one
    cross-host `executeCommand`, to the flasher, whose `GdbServer`
    (`extension/gdbserver.js`) answers it over the board's USB connection.
    The relay sits at the *packet* boundary on purpose: one round trip per
@@ -209,6 +211,11 @@ A Codespace has **no USB**. Three consequences:
    target description is served because without one gdb assumes FPA
    registers in the `g` packet. No user gesture reaches an attach, so the
    board must already be connected; the attach says which button to press.
+   The relay detaches the browser *before* it drains its packet queue: a
+   pending `continue` ends only when the server detaches, so the other order
+   deadlocked and refused every later gdb as "a second connection". And the
+   FPB's NUM_CODE is split across bits 14:12 and 7:4 -- decoding it from the
+   wrong bits went unnoticed on silicon because this chip's high bits are 0.
 
 `python3 tools/mb.py extension` assembles the publishable folder (bundling the
 vendored library into `extension.js`); `ada.yml` proves it packages with `vsce`

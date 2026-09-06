@@ -168,21 +168,17 @@ for (const id of ["attach", "packet", "interrupt", "detach", "ping"]) {
         `microbit.gdb.${id} must be hidden from the command palette`);
 }
 check(await handlers["microbit.gdb.ping"]() === "pong", "ping answers");
-// F5 reaches the browser with no user gesture to spend on the USB picker, so
-// with no authorised board the attach must fail with an instruction, never
-// try to show the picker.
-executed.length = 0;
-let attachError = "";
-try { await handlers["microbit.gdb.attach"](); } catch (e) { attachError = e.message; }
-check(/Connect the micro:bit first/.test(attachError) && /Serial view/.test(attachError),
-      "attach with no board tells the student what to press");
-check(!executed.some((e) => /requestUsbDevice/.test(e)), "and never asks for the picker, which cannot appear here");
 let packetError = "";
 try { await handlers["microbit.gdb.packet"]("?"); } catch (e) { packetError = e.message; }
 check(/no debug session/.test(packetError), "a packet outside a session is refused");
-await handlers["microbit.gdb.interrupt"]();
-await handlers["microbit.gdb.detach"]();
-check(true, "interrupt and detach outside a session are harmless");
+try {
+  await handlers["microbit.gdb.interrupt"]();
+  await handlers["microbit.gdb.detach"]();
+} catch (e) {
+  check(false, `interrupt and detach outside a session must be harmless: ${e.message}`);
+}
+// The stale-connection, flash-guard and attach checks run further down, after
+// the serial section and runFlash's fakeDevice/runFlash exist (see below).
 
 // ---------------------------------------------------------- serial console
 // The board's UART arrives as serialdata events; the console is a webview view
@@ -304,6 +300,72 @@ const withoutDevice = await runFlash({ authorised: false });
 check(withoutDevice.commands.includes("workbench.experimental.requestUsbDevice"),
       "with no authorised device, the workbench picker must be used");
 check(withoutDevice.reached >= 1, "the device the picker authorised must then be used");
+
+// -------------------------------------------------------------- debugging, on the board
+// These use the first module instance (`mod`/`handlers`), and run here rather
+// than up by the command-registration checks because they need runFlash's
+// fakeDevice; they also spin up fresh instances, so they must not run before
+// the serial section, whose provider they would otherwise overwrite.
+//
+// An unplugged board leaves the library's object behind with another status;
+// it must be dropped, not handed to gdb (or to Connect) as if it were live.
+let disposed = 0;
+mod.exports._serial.setConnection({ status: "NoAuthorizedDevice", dispose() { disposed++; } });
+executed.length = 0;
+let staleError = "";
+try { await handlers["microbit.gdb.attach"](); } catch (e) { staleError = e.message; }
+check(/Connect the micro:bit first/.test(staleError) && disposed === 1,
+      "a connection whose status is not Connected is disposed and not used");
+check(executed.includes("setContext microbit.connected false"), "and the header buttons are told");
+// Flashing under a debug session would answer gdb's continue mid-flash;
+// disconnecting would leave breakpoints armed that nothing can clear.
+let detached = 0;
+mod.exports._debug.setSession({ running: false, detach: async () => { detached++; } });
+const shown = [];
+vscode.window.showErrorMessage = (m) => { shown.push(m); };
+await handlers["microbit.flash"]();
+check(shown.some((m) => /Stop it first/.test(m)), "Ctrl+Alt+F during a debug session is refused, with the way out");
+await handlers["microbit.disconnect"]();
+check(detached === 1, "Disconnect ends the debug session first");
+try { await handlers["microbit.gdb.packet"]("?"); check(false, "the session must be gone after Disconnect"); }
+catch (e) { check(/no debug session/.test(e.message), "the session is gone after Disconnect"); }
+
+// F5 reaches the browser with no user gesture to spend on the USB picker: with
+// USB present but no authorised board, attach must fail with an instruction
+// and never call the picker; with an authorised board it must connect. Each
+// run is its own module instance with an isolated view registry, so it does
+// not disturb the serial provider resolved above.
+async function runAttach({ authorised }) {
+  const reached = [], commands = [];
+  let attach;
+  const vs = {
+    ...vscode,
+    window: { ...vscode.window, showErrorMessage() {}, createOutputChannel: () => chan,
+              createStatusBarItem: () => bar, registerWebviewViewProvider: () => ({ dispose() {} }) },
+    commands: {
+      registerCommand: (id, fn) => { if (id === "microbit.gdb.attach") attach = fn; return { dispose() {} }; },
+      executeCommand: async (id) => { commands.push(id); },
+    },
+  };
+  const nav = { usb: { getDevices: async () => (authorised ? [fakeDevice(reached)] : []),
+                       addEventListener() {}, removeEventListener() {} } };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", "navigator", src)(
+    (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
+  m.exports.activate({ subscriptions: [] });
+  let error = "";
+  try { await attach(); } catch (e) { error = e.message; }
+  return { error, commands, reached: reached.length };
+}
+const unauthorised = await runAttach({ authorised: false });
+check(/Connect the micro:bit first/.test(unauthorised.error) && /Serial view/.test(unauthorised.error),
+      "attach with USB but no authorised board tells the student what to press");
+check(!unauthorised.commands.includes("workbench.experimental.requestUsbDevice"),
+      "and never asks for the picker, which cannot appear without a gesture");
+const authorisedRun = await runAttach({ authorised: true });
+check(authorisedRun.reached >= 1 && /reached the fake device/.test(authorisedRun.error),
+      "attach with an authorised board connects to it, silently");
+check(!authorisedRun.commands.includes("workbench.experimental.requestUsbDevice"), "still without the picker");
 
 // -------------------------------------------------------------- delivery
 // An extension installed *into* a Codespace never runs in the browser client
