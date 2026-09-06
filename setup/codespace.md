@@ -131,9 +131,9 @@ in the command palette.)
 ## 5. Debug with breakpoints
 
 Set a breakpoint in `main.adb` and press **F5**: it builds, flashes, and stops
-on that line so you can step through and inspect variables. **Connect the board
-first** — press the **plug** button in the Serial view's header, or Ctrl+Alt+F
-once — because F5 cannot open the USB picker by itself.
+on that line so you can step through and inspect variables. The first time, the
+browser asks which USB device to use — choose the micro:bit, as for Ctrl+Alt+F;
+after that the board is remembered.
 
 Full guide, both paths and troubleshooting: **[Debug with
 breakpoints](debugging.md)**.

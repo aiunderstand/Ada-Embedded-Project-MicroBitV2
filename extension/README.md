@@ -22,9 +22,9 @@ runs in the Codespace, where the program's symbols are; the companion
 extension there opens a port for it and forwards every gdb packet to this
 extension, which answers over the board's USB connection: halting, stepping,
 registers, memory, six hardware breakpoints, and gdb's `load`, which flashes.
-Connect the board first (the Serial view's **plug** button, or Ctrl+Alt+F):
-F5 cannot open the device picker itself. The `micro:bit: (internal) gdb …`
-commands are the companion's end of that conversation, not for people.
+The first time, F5 asks which USB device to use, just as Ctrl+Alt+F does; after
+that the board is remembered. The `micro:bit: (internal) gdb …` commands are
+the companion's end of that conversation, not for people.
 
 ## Where it runs
 

@@ -581,12 +581,14 @@ function debugTarget() {
 async function cmdGdbAttach() {
   output.show(true);
   // No user gesture reaches this point -- F5 went through gdb, a socket and
-  // the companion -- so the picker cannot be shown from here. A board
-  // authorised earlier connects silently; otherwise say what to press.
+  // the companion -- so the picker cannot be shown from here. Normally the
+  // debug-configuration provider above already connected the board at the
+  // keypress; this is the fallback for a dismissed picker, or a flasher that
+  // had not finished starting when F5 was pressed.
   if (!(await connectIfAuthorised())) {
     throw new Error(
-      "Connect the micro:bit first: press Connect in the Serial view's header " +
-        "(or Ctrl+Alt+F), then start debugging again."
+      "Connect the micro:bit first: press F5 again and choose the board in the " +
+        "picker, or press Connect in the Serial view's header."
     );
   }
   if (gdb) {
@@ -617,6 +619,34 @@ async function cmdGdbDetach() {
     await session.detach();
   }
 }
+
+// The attach above arrives through gdb, the companion and a socket, seconds
+// after the keypress, and Chrome shows the USB picker only while it is
+// handling a gesture -- so the attach cannot ask for the board. F5 itself is
+// a gesture, though. VS Code asks every debug-configuration provider for the
+// type to resolve the configuration before it builds or starts anything, and
+// a provider registered here, in the browser, runs inside that window. So the
+// board is asked for at F5, exactly as Ctrl+Alt+F asks before building; by
+// the time gdb attaches, the connection already exists.
+const debugConfigurationProvider = {
+  async resolveDebugConfiguration(folder, config) {
+    // Desktop VS Code, or a browser without WebUSB: pyocd owns the board
+    // there, and holding it over WebUSB would take it away from pyocd.
+    if (!config || vscode.env.uiKind !== vscode.UIKind.Web || !usbAvailable()) {
+      return config;
+    }
+    try {
+      await ensureConnected();
+    } catch (err) {
+      log(`F5: ${err.message}`);
+      vscode.window.showErrorMessage(
+        `micro:bit: ${err.message} Debugging needs the board: plug it in and press F5 again.`
+      );
+      return undefined; // cancels the launch; the message says why
+    }
+    return config;
+  },
+};
 
 async function cmdStatus() {
   output.show(true);
@@ -671,6 +701,8 @@ function activate(context) {
     vscode.commands.registerCommand("microbit.gdb.interrupt", cmdGdbInterrupt),
     vscode.commands.registerCommand("microbit.gdb.detach", cmdGdbDetach),
     vscode.commands.registerCommand("microbit.gdb.ping", () => "pong"),
+    // Asks for the board at F5, inside the keypress's gesture window.
+    vscode.debug.registerDebugConfigurationProvider("cortex-debug", debugConfigurationProvider),
     vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
       { webviewOptions: { retainContextWhenHidden: true } })
   );

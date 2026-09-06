@@ -122,10 +122,13 @@ const chan = { appendLine() {}, append() {}, show() {}, dispose() {} };
 const bar = { show() {}, dispose() {}, set text(_v) {}, get text() { return ""; } };
 class EventEmitter { constructor() { this.listeners = []; this.event = (fn) => { this.listeners.push(fn); return { dispose() {} }; }; } fire(v) { for (const fn of this.listeners) fn(v); } }
 const providers = {};
+const debugProviders = {};
 const executed = [];
 const handlers = {};
 const vscode = {
   EventEmitter,
+  env: { uiKind: 2 }, UIKind: { Web: 2, Desktop: 1 },
+  debug: { registerDebugConfigurationProvider: (type, p) => { debugProviders[type] = p; return { dispose() {} }; } },
   window: { createOutputChannel: () => chan, createStatusBarItem: () => bar,
             showErrorMessage() {}, showInformationMessage() {},
             withProgress: async (_o, f) => f({ report() {} }),
@@ -268,8 +271,12 @@ async function runFlash({ authorised }) {
   let handler;
   const vs = {
     ...vscode,
+    // Own registries: this throwaway instance must not overwrite the first
+    // instance's serial view or debug provider in the shared mock.
+    debug: { registerDebugConfigurationProvider: () => ({ dispose() {} }) },
     window: { ...vscode.window, showErrorMessage: (m) => { errors.push(m); },
-              createOutputChannel: () => chan, createStatusBarItem: () => bar },
+              createOutputChannel: () => chan, createStatusBarItem: () => bar,
+              registerWebviewViewProvider: () => ({ dispose() {} }) },
     commands: {
       registerCommand: (id, fn) => { if (id === "microbit.flash") handler = fn; return { dispose() {} }; },
       executeCommand: async (id) => { commands.push(id); authorised = true; },
@@ -340,6 +347,7 @@ async function runAttach({ authorised }) {
   let attach;
   const vs = {
     ...vscode,
+    debug: { registerDebugConfigurationProvider: () => ({ dispose() {} }) },
     window: { ...vscode.window, showErrorMessage() {}, createOutputChannel: () => chan,
               createStatusBarItem: () => bar, registerWebviewViewProvider: () => ({ dispose() {} }) },
     commands: {
@@ -366,6 +374,64 @@ const authorisedRun = await runAttach({ authorised: true });
 check(authorisedRun.reached >= 1 && /reached the fake device/.test(authorisedRun.error),
       "attach with an authorised board connects to it, silently");
 check(!authorisedRun.commands.includes("workbench.experimental.requestUsbDevice"), "still without the picker");
+
+// ------------------------------------------------------ F5 asks for the board
+// The attach cannot show the picker (no gesture reaches it), but F5 is a
+// gesture and VS Code resolves the debug configuration before it builds: a
+// provider in the browser asks for the board right there, as Ctrl+Alt+F does.
+check(debugProviders["cortex-debug"] && typeof debugProviders["cortex-debug"].resolveDebugConfiguration === "function",
+      "the flasher registers a debug-configuration provider for cortex-debug");
+check((pkg.activationEvents || []).includes("onDebugResolve:cortex-debug"),
+      "and activates on onDebugResolve:cortex-debug, so an early F5 still finds it");
+{
+  const cfg = { name: "Debug (PyOCD)", type: "cortex-debug", servertype: "pyocd" };
+  check(await debugProviders["cortex-debug"].resolveDebugConfiguration(undefined, cfg) === cfg,
+        "with no WebUSB at all the configuration passes through untouched");
+}
+async function runResolve({ uiKind = 2, authorised = false, pickAuthorises = false, usb = true }) {
+  const reached = [], commands = [], errors = [];
+  let provider;
+  const vs = {
+    ...vscode,
+    env: { uiKind },
+    window: { ...vscode.window, showErrorMessage: (m) => { errors.push(m); }, createOutputChannel: () => chan,
+              createStatusBarItem: () => bar, registerWebviewViewProvider: () => ({ dispose() {} }) },
+    commands: {
+      registerCommand: () => ({ dispose() {} }),
+      executeCommand: async (id) => {
+        commands.push(id);
+        if (id === "workbench.experimental.requestUsbDevice" && pickAuthorises) authorised = true;
+      },
+    },
+    debug: { registerDebugConfigurationProvider: (type, p) => { if (type === "cortex-debug") provider = p; return { dispose() {} }; } },
+  };
+  const nav = usb
+    ? { usb: { getDevices: async () => (authorised ? [fakeDevice(reached)] : []), addEventListener() {}, removeEventListener() {} } }
+    : {};
+  const m = { exports: {} };
+  new Function("require", "module", "exports", "navigator", src)(
+    (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
+  m.exports.activate({ subscriptions: [] });
+  const config = { name: "Debug (PyOCD)", type: "cortex-debug", request: "launch", servertype: "pyocd" };
+  const result = await provider.resolveDebugConfiguration(undefined, config);
+  return { result, config, commands, errors, reached: reached.length };
+}
+const desktopResolve = await runResolve({ uiKind: 1, authorised: true });
+check(desktopResolve.result === desktopResolve.config && !desktopResolve.commands.includes("workbench.experimental.requestUsbDevice"),
+      "on the desktop the provider passes the configuration through: pyocd owns the board there, and WebUSB must not take it");
+const noUsbResolve = await runResolve({ usb: false });
+check(noUsbResolve.result === noUsbResolve.config, "without WebUSB it passes through too");
+const dismissed = await runResolve({ authorised: false, pickAuthorises: false });
+check(dismissed.commands.includes("workbench.experimental.requestUsbDevice"),
+      "F5 with no authorised board opens the picker, inside the keypress's gesture window");
+check(dismissed.result === undefined && dismissed.errors.some((e) => /No micro:bit was selected/.test(e) && /press F5 again/.test(e)),
+      "a dismissed picker cancels the launch with a message, rather than starting gdb at nothing");
+const picked = await runResolve({ authorised: false, pickAuthorises: true });
+check(picked.commands.includes("workbench.experimental.requestUsbDevice") && picked.reached >= 1,
+      "a chosen board is connected before the build starts");
+const known = await runResolve({ authorised: true });
+check(!known.commands.includes("workbench.experimental.requestUsbDevice") && known.reached >= 1,
+      "an already-authorised board connects silently: the picker appears once per browser, not once per F5");
 
 // -------------------------------------------------------------- delivery
 // An extension installed *into* a Codespace never runs in the browser client
