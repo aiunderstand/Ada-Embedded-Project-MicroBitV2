@@ -14,4 +14,10 @@ If that ever fails, run `micro:bit: Install the flasher in this browser` from
 the command palette. In desktop VS Code it does nothing: flash with
 `python3 tools/mb.py flash` there.
 
+It is also the Codespace end of **F5**. Cortex-Debug starts `arm-eabi-gdb`
+inside the Codespace; this extension opens a loopback port for it and forwards
+each gdb packet to the flasher in your browser, where the board is. The
+template's launch configuration says pyocd, which is right on a local machine;
+in the browser it is steered at that port automatically.
+
 Made for the [Ada micro:bit course template](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2).

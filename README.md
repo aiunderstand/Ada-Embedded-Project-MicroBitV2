@@ -20,7 +20,7 @@ Everything below assumes you are working in *your* repository, not this one.
 
 | | Path | You install | Flashing | Debugging (F5) |
 |---|---|---|---|---|
-| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | no |
+| 🟢 | **[In your browser](setup/codespace.md)** | **nothing** | from the browser | **yes**, from the browser |
 | 🔵 | **[On your own machine](setup/local.md)** | VS Code + Python, then one command | plugged in, or browser | **yes** |
 
 **Not sure?** Start with the browser. It needs nothing installed, works on a
@@ -88,8 +88,9 @@ closing the folder.
 
 ## This template uses
 
-Two extensions: the Ada language server (**AdaCore.ada**) and the micro:bit
+Three extensions: the Ada language server (**AdaCore.ada**), the micro:bit
 flasher (**AIUnderstand.microbit-flasher**), which a Codespace installs into
-your browser by itself. Locally, Cortex-Debug is offered the first time you
-press F5. [Alire](https://alire.ada.dev/) supplies the toolchain.
+your browser by itself, and **Cortex-Debug** for F5 — installed in a Codespace,
+offered locally the first time you press F5. [Alire](https://alire.ada.dev/)
+supplies the toolchain.
 

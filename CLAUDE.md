@@ -20,7 +20,8 @@ Code/libs/Ada_Drivers_Library     git submodule -> aiunderstand/Ada_Drivers_Libr
 tools/mb.py                       the one driver: build / flash / prove / serve / setup / extension / companion
 docs/                             the GitHub Pages flasher (index.html + app.mjs + vendor/)
 extension/                        VS Code *web* extension: flashing from a Codespace (runs in the browser)
-companion/                        its Codespace-side helper: installs the flasher into the browser
+extension/gdbserver.js            ... and a GDB remote-protocol server, so F5 works there too
+companion/                        its Codespace-side helper: installs the flasher into the browser, relays gdb to it
 setup/                            per-path student guides
 ```
 
@@ -65,6 +66,8 @@ python3 tools/mb.py build --all      # every project PASS, 0 FAIL, 0 XPASS
 python3 tools/mb.py prove --all-spark --mode=prove --level=1
 node tools/test_flasher.mjs          # the browser flasher
 node tools/test_extension.mjs        # the VS Code extension
+node tools/test_gdbserver.mjs        # the gdb server, on a fake board
+node tools/test_companion.mjs        # the companion's gdb relay, over a real socket
 ```
 
 **Prove that a new test can fail.** Break the thing deliberately, watch the
@@ -185,6 +188,27 @@ A Codespace has **no USB**. Three consequences:
 
    `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
    above). `setup/publishing.md` is the lecturer's publishing procedure.
+
+5. **F5 debugs through the browser.** Cortex-Debug (installed in the
+   container) starts `arm-eabi-gdb` there and connects it to `localhost:3333`,
+   where the companion listens. Every gdb packet is forwarded, as one
+   cross-host `executeCommand`, to the flasher, whose `GdbServer`
+   (`extension/gdbserver.js`) answers it over the board's USB connection.
+   The relay sits at the *packet* boundary on purpose: one round trip per
+   gdb packet, with the dozens of SWD transfers each needs staying in the
+   browser. pyocd in the container with the browser as a remote probe would
+   pay that round trip per SWD transfer, 50-100 times per stop.
+
+   The one launch configuration says `pyocd`; the companion rewrites it to
+   `external` when the UI is a browser, so locals and Codespaces share it.
+   Breakpoints are FPB comparators — six on this Cortex-M4, and `Z0` is
+   served as hardware too, the code being in flash. Single-steps mask
+   interrupts (`C_MASKINTS`), or Ravenscar's timer drags every step into the
+   runtime. gdb's `load` is served through the library's own `flash()`, which
+   ends by resetting the board to *run*, so the server halts it again. A
+   target description is served because without one gdb assumes FPA
+   registers in the `g` packet. No user gesture reaches an attach, so the
+   board must already be connected; the attach says which button to press.
 
 `python3 tools/mb.py extension` assembles the publishable folder (bundling the
 vendored library into `extension.js`); `ada.yml` proves it packages with `vsce`

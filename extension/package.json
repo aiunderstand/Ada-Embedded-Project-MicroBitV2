@@ -2,7 +2,7 @@
   "name": "microbit-flasher",
   "displayName": "micro:bit v2 Flasher",
   "description": "Flash the micro:bit v2 over WebUSB from inside VS Code, including Codespaces",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
@@ -63,6 +63,31 @@
         "title": "micro:bit: Choose project to build and flash",
         "category": "micro:bit",
         "icon": "$(folder)"
+      },
+      {
+        "command": "microbit.gdb.attach",
+        "title": "micro:bit: (internal) gdb attach",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.gdb.packet",
+        "title": "micro:bit: (internal) gdb packet",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.gdb.interrupt",
+        "title": "micro:bit: (internal) gdb interrupt",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.gdb.detach",
+        "title": "micro:bit: (internal) gdb detach",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.gdb.ping",
+        "title": "micro:bit: (internal) gdb ping",
+        "category": "micro:bit"
       }
     ],
     "keybindings": [
@@ -92,6 +117,13 @@
       ]
     },
     "menus": {
+      "commandPalette": [
+        { "command": "microbit.gdb.attach", "when": "false" },
+        { "command": "microbit.gdb.packet", "when": "false" },
+        { "command": "microbit.gdb.interrupt", "when": "false" },
+        { "command": "microbit.gdb.detach", "when": "false" },
+        { "command": "microbit.gdb.ping", "when": "false" }
+      ],
       "view/title": [
         {
           "command": "microbit.connect",

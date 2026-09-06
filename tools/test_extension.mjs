@@ -154,6 +154,36 @@ try {
 check(activated, "activate() should register its commands without a DOM");
 check(typeof mod.exports.deactivate === "function", "deactivate should be exported");
 
+// ---------------------------------------------------------------- debugging
+// The gdb server (extension/gdbserver.js) is bundled ahead of the extension
+// and reached through five commands the companion calls across hosts. They
+// are contributed, so a call activates the extension, and hidden from the
+// palette, since they are not for people.
+check(src.includes("class GdbServer") && src.indexOf("class GdbServer") < src.indexOf("async function cmdGdbAttach"),
+      "gdbserver.js is bundled, before the code that uses it");
+for (const id of ["attach", "packet", "interrupt", "detach", "ping"]) {
+  check(typeof handlers[`microbit.gdb.${id}`] === "function", `microbit.gdb.${id} must be registered`);
+  check((pkg.contributes.commands || []).some((c) => c.command === `microbit.gdb.${id}`), `microbit.gdb.${id} must be contributed`);
+  check(((pkg.contributes.menus || {}).commandPalette || []).some((m) => m.command === `microbit.gdb.${id}` && m.when === "false"),
+        `microbit.gdb.${id} must be hidden from the command palette`);
+}
+check(await handlers["microbit.gdb.ping"]() === "pong", "ping answers");
+// F5 reaches the browser with no user gesture to spend on the USB picker, so
+// with no authorised board the attach must fail with an instruction, never
+// try to show the picker.
+executed.length = 0;
+let attachError = "";
+try { await handlers["microbit.gdb.attach"](); } catch (e) { attachError = e.message; }
+check(/Connect the micro:bit first/.test(attachError) && /Serial view/.test(attachError),
+      "attach with no board tells the student what to press");
+check(!executed.some((e) => /requestUsbDevice/.test(e)), "and never asks for the picker, which cannot appear here");
+let packetError = "";
+try { await handlers["microbit.gdb.packet"]("?"); } catch (e) { packetError = e.message; }
+check(/no debug session/.test(packetError), "a packet outside a session is refused");
+await handlers["microbit.gdb.interrupt"]();
+await handlers["microbit.gdb.detach"]();
+check(true, "interrupt and detach outside a session are harmless");
+
 // ---------------------------------------------------------- serial console
 // The board's UART arrives as serialdata events; the console is a webview view
 // with an input field, Send and Clear. Bytes that arrive before the view exists
@@ -314,23 +344,27 @@ check(/AIUnderstand\.microbit-companion/.test(devcontainer) && !/microbit-flashe
       "devcontainer.json must list the companion and never the flasher");
 const csrc = fs.readFileSync(path.join(cout, "extension.js"), "utf8");
 async function runCompanion({ uiKind, present, force = false }) {
-  const executed = [], messages = [];
+  const executed = [], messages = [], listening = [], debugProviders = [];
   const state = {};
-  let handler;
+  const handlers = {};
   const vs = {
     env: { uiKind, openExternal() {} }, UIKind: { Web: 2, Desktop: 1 },
     Uri: { parse: (u) => u },
     extensions: { getExtension: () => (present ? { id: "AIUnderstand.microbit-flasher" } : undefined) },
-    commands: { registerCommand: (id, fn) => { handler = fn; return { dispose() {} }; },
+    commands: { registerCommand: (id, fn) => { handlers[id] = fn; return { dispose() {} }; },
                 executeCommand: async (...a) => { executed.push(a.join(" ")); } },
-    window: { showInformationMessage: async (m) => { messages.push(m); }, showWarningMessage: async () => undefined },
+    window: { showInformationMessage: async (m) => { messages.push(m); }, showWarningMessage: async () => undefined,
+              createOutputChannel: () => chan, showErrorMessage() {} },
+    debug: { registerDebugConfigurationProvider: (type) => { debugProviders.push(type); return { dispose() {} }; } },
   };
+  // No real socket here: tools/test_companion.mjs drives the relay for real.
+  const fakeNet = { createServer: () => ({ listen: (port, host) => { listening.push(`${host}:${port}`); }, on() {}, close() {} }) };
   const m = { exports: {} };
-  new Function("require", "module", "exports", csrc)((n) => vs, m, m.exports);
+  new Function("require", "module", "exports", csrc)((n) => (n === "net" ? fakeNet : vs), m, m.exports);
   const ctx = { subscriptions: [], globalState: { get: (k) => state[k], update: async (k, v) => { state[k] = v; } } };
   const result = await m.exports.activate(ctx);
-  if (force) await handler();
-  return { result, executed, messages, state };
+  if (force) await handlers["microbit.companion.install"]();
+  return { result, executed, messages, state, listening, debugProviders, handlers };
 }
 const fresh = await runCompanion({ uiKind: 2, present: false });
 check(fresh.executed.includes("workbench.extensions.installExtension AIUnderstand.microbit-flasher"),
@@ -346,6 +380,15 @@ check(desktop.result === "desktop" && !desktop.executed.some((e) => /installExte
       "desktop VS Code has no WebUSB: the companion does nothing there");
 const forcedRun = await runCompanion({ uiKind: 2, present: true, force: true });
 check(forcedRun.executed.some((e) => /installExtension/.test(e)), "the command installs even when a copy is present");
+// F5: gdb runs in the Codespace and reaches the board through the browser.
+// The companion is the Codespace end -- a loopback port for gdb, and the
+// launch configuration steered at it -- but only where the browser is the UI.
+check(already.listening.includes("127.0.0.1:3333"), "in the browser, the companion listens for gdb on loopback port 3333");
+check(already.debugProviders.includes("cortex-debug"), "and steers Cortex-Debug launches at it");
+check(!desktop.listening.length && !desktop.debugProviders.length, "on the desktop it does neither: pyocd has the board there");
+check(typeof already.handlers["microbit.companion.ping"] === "function", "the flasher's round-trip check has something to call");
+check((cpkg.contributes.commands || []).some((c) => c.command === "microbit.companion.ping"),
+      "the ping is a contributed command, so a call from the browser activates the companion if needed");
 fs.rmSync(cout, { recursive: true, force: true });
 
 if (fail.length) {

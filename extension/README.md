@@ -15,6 +15,17 @@ channel carries the extension's own log.
 Made for the [Ada micro:bit course template](https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2);
 it flashes any Intel HEX at `build/main.hex`, whatever produced it.
 
+## Debugging with breakpoints
+
+In a Codespace, **F5** works through this extension as well. `arm-eabi-gdb`
+runs in the Codespace, where the program's symbols are; the companion
+extension there opens a port for it and forwards every gdb packet to this
+extension, which answers over the board's USB connection: halting, stepping,
+registers, memory, six hardware breakpoints, and gdb's `load`, which flashes.
+Connect the board first (the Serial view's **plug** button, or Ctrl+Alt+F):
+F5 cannot open the device picker itself. The `micro:bit: (internal) gdb …`
+commands are the companion's end of that conversation, not for people.
+
 ## Where it runs
 
 This is a *web* extension: VS Code runs it in the **browser**, on your own
