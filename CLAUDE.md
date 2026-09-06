@@ -187,7 +187,8 @@ A Codespace has **no USB**. Five consequences:
    than buttons inside the webview.
 
    `AIUnderstand.microbit-flasher` — never into the Codespace (see the trap
-   above). `setup/publishing.md` is the lecturer's publishing procedure.
+   above). `setup/extensions.md` covers building, testing and publishing both
+   extensions; `setup/debugging.md` is the student-facing F5 guide.
 
 5. **F5 debugs through the browser.** Cortex-Debug (installed in the
    container) starts `arm-eabi-gdb` there and connects it to the companion's
