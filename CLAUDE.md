@@ -210,8 +210,12 @@ A Codespace has **no USB**. Five consequences:
    runtime. gdb's `load` is served through the library's own `flash()`, which
    ends by resetting the board to *run*, so the server halts it again. A
    target description is served because without one gdb assumes FPA
-   registers in the `g` packet. No user gesture reaches an attach, so the
-   board must already be connected; the attach says which button to press.
+   registers in the `g` packet. No user gesture reaches an *attach*, but F5
+   itself is one: the flasher registers a `DebugConfigurationProvider` for
+   `cortex-debug` and asks for the device in `resolveDebugConfiguration`,
+   which VS Code runs before the build, inside the gesture window -- the same
+   trick as Ctrl+Alt+F. The attach's own error remains for when that did not
+   happen (picker dismissed, flasher not yet active).
    The relay detaches the browser *before* it drains its packet queue: a
    pending `continue` ends only when the server detaches, so the other order
    deadlocked and refused every later gdb as "a second connection". And the

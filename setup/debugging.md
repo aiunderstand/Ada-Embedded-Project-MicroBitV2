@@ -25,13 +25,14 @@ follows it. There is nothing to edit in `.vscode/launch.json`.
 
 ## In a browser Codespace
 
-**Connect the board first.** F5 cannot open the browser's USB picker by itself,
-so the flasher has to be holding the board already. Press the **plug** button in
-the **micro:bit › Serial** view's header, or flash once with **Ctrl+Alt+F** — the
-board is remembered after that.
-
-Then set a breakpoint and press **F5**. It builds, flashes, and stops at the
+Set a breakpoint and press **F5**. The first time, the browser asks which USB
+device to use — choose the micro:bit, as for Ctrl+Alt+F; after that the board
+is remembered and F5 goes straight ahead. It builds, flashes, and stops at the
 breakpoint.
+
+> The board is asked for at the keypress, before the build, because the browser
+> shows its device picker only while it is handling a real click or key. Dismiss
+> the picker and nothing starts.
 
 > **How it reaches the board.** The debugger (`arm-eabi-gdb`) runs in the
 > Codespace, where your program's symbols are; the board is plugged into your
@@ -63,9 +64,10 @@ The chip's debug unit sets these, on **both** paths:
 
 ## Troubleshooting
 
-**F5 says "Connect the micro:bit first" (Codespace).** The debugger cannot open
-the browser's device picker. Press the **plug** button in the Serial view's
-header, or Ctrl+Alt+F once, then F5 again.
+**F5 says "Connect the micro:bit first" (Codespace).** The picker was
+dismissed, or the flasher had not finished starting when you pressed F5. Press
+F5 again and choose the board; or press the **plug** button in the Serial view's
+header first.
 
 **F5 says the flasher is not running in this browser (Codespace).** The flasher
 has to be installed in your **browser**, not in the Codespace — see
