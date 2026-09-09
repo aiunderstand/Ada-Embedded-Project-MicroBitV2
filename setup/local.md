@@ -38,8 +38,36 @@ any of them.
 
 ## 2. Get the code
 
-Clone **your** repository — the one you made with *Use this template* — with its
-submodules:
+**The short way.** One file does the whole of steps 2 and 3: it installs git if
+you do not have it, clones your repository with its drivers, and runs the setup
+below. Download it, then run it with the address of **your** repository, the one
+you made with *Use this template*.
+
+macOS and Linux:
+
+```shell
+curl -fsSLO https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/get.py
+python3 get.py https://github.com/YOUR_NAME/YOUR_REPO.git
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/get.py -OutFile get.py
+py get.py https://github.com/YOUR_NAME/YOUR_REPO.git
+```
+
+Run it without the address and it asks for one. When it finishes, skip to step 4.
+
+> **Private repository?** On Windows, git opens a sign-in window by itself.
+> Elsewhere the script uses the GitHub command-line tool (`gh`) to sign you in
+> through the browser if it is installed, and otherwise tells you how. When git
+> asks for a *password*, it wants a
+> [personal access token](https://github.com/settings/tokens), never your
+> account password.
+
+**By hand**, if you already have git and would rather see each step. Clone with
+its submodules:
 
 ```shell
 git clone --recurse-submodules https://github.com/YOUR_NAME/YOUR_REPO.git
@@ -129,13 +157,11 @@ Plug in the micro:bit with a **data** USB cable — some cables only carry power
 **Ctrl+Shift+B** already builds *and* flashes. If flashing times out, run the
 **Erase** task (Ctrl+Shift+P → *Tasks: Run Task* → **Erase**) and try again.
 
-For flashing to work you need pyocd:
+Flashing needs pyocd, which the setup command in step 3 already installed.
 
-```shell
-pip install -U pyocd
-```
-
-> **Linux:** install the udev rule once, or your user cannot open the device:
+> **Linux:** install the udev rule once, or nothing can open the device -- not
+> pyocd, and not the browser flasher either. A raw USB device belongs to root
+> until a rule says otherwise:
 >
 > ```shell
 > sudo cp tools/udev/50-microbit.rules /etc/udev/rules.d/
@@ -240,6 +266,39 @@ python3 tools/mb.py setup
 ```
 
 Flashing from the browser needs none of this.
+
+**Flashing says pyocd is missing, or that no micro:bit is visible.** Those are
+different problems and the message says which one you have. "pyocd is not
+installed" is fixed by running setup again. "No micro:bit is visible" usually
+means the cable carries power but not data, so the board never appears as a
+MICROBIT drive.
+
+**Windows: the build works but `alr` is not recognised in a terminal.** Setup
+installs Alire into your user folder rather than editing PATH. It offers to add
+it; if you said no, add this folder to PATH by hand, or just keep using the
+tasks and `python3 tools/mb.py`:
+`%USERPROFILE%\.local\share\ada-microbit\alr\bin`. Close and reopen VS Code
+afterwards, or it keeps the PATH it started with.
+
+**Linux: the browser says it cannot connect, and the console shows a security
+error.** WebUSB was refused permission to open the device. Install the udev rule
+in step 6, then unplug and replug the board. Check the board is visible at all
+with `lsusb`, which should list `0d28:0204`.
+
+**Linux: still refused, and Chromium came from the Ubuntu App Centre.** The
+Chromium snap has no raw USB access unless it is granted:
+
+```shell
+sudo snap connect chromium:raw-usb
+```
+
+Installing Chrome from its `.deb` avoids this entirely. Firefox has no WebUSB
+at all, and the page says so rather than failing to connect.
+
+**Flashing from VS Code does nothing on my own machine.** The flasher extension
+is for the browser. On your own machine flashing goes through pyocd instead:
+Ctrl+Shift+B, or `python3 tools/mb.py flash`. The extension says the same in its
+output panel.
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.

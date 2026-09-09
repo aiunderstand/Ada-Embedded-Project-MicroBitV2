@@ -39,6 +39,7 @@ OBJ_TREE = BUILD / "obj"
 TEMPLATE_GPR = REPO / "Code" / "itrs.gpr"
 EXAMPLES = REPO / "Code/libs/Ada_Drivers_Library/examples/MicroBit_v2"
 KNOWN_FAILURES = REPO / "tools" / "known_failures.txt"
+UDEV_RULE = REPO / "tools" / "udev" / "50-microbit.rules"
 ALS_JSON = REPO / ".als.json"
 PROJECT_FILE = REPO / "build" / "project.txt"   # what "Choose project..." picked
 
@@ -476,21 +477,78 @@ def build_all(args) -> int:
 # flash / debug / prove
 # --------------------------------------------------------------------------
 
-def probe_present() -> bool:
+def in_container() -> bool:
+    """A Codespace or devcontainer: no USB, and udev belongs to the host."""
+    return bool(os.environ.get("CODESPACES") or os.environ.get("REMOTE_CONTAINERS")
+                or Path("/.dockerenv").exists())
+
+
+def probe_state() -> str:
+    """Why flashing can or cannot happen: ok / no-pyocd / denied / no-probe.
+
+    These were one boolean, and every failure was reported as "no debug probe is
+    visible", with a Codespaces explanation -- so a Windows student with the
+    board plugged in and pyocd simply not on PATH was told about Codespaces.
+    Three different problems need three different sentences.
+    """
+    if os.path.sep not in pyocd_path():
+        return "no-pyocd"
     rc, out = capture([pyocd_path(), "list"])
+    if rc == 127:
+        return "no-pyocd"
+    low = out.lower()
     if rc != 0:
-        return False
-    return bool([l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
-                 or re.match(r"^\s*\d+\s", l)])
+        # libusb cannot open the device without the udev rule; it says so in
+        # several different wordings depending on the version.
+        if any(w in low for w in ("access denied", "permission", "error_access",
+                                  "not permitted")):
+            return "denied"
+        return "no-probe"
+    if any(w in low for w in ("no available debug probes", "no probes")):
+        return "no-probe"
+    if [l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
+            or re.match(r"^\s*\d+\s", l)]:
+        return "ok"
+    return "no-probe"
+
+
+def probe_present() -> bool:
+    return probe_state() == "ok"
+
+
+def cannot_flash_hint(state: str) -> None:
+    """Say which of the three things went wrong, and how to fix that one."""
+    browser = (f"    Or flash from the browser: download "
+               f"{rel(BUILD / 'main.hex')} and drop it on\n"
+               "    https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/")
+    if state == "no-pyocd":
+        print("\nmb: built fine, but pyocd is not installed here, so it cannot flash.\n"
+              "    Install it with:  python3 tools/mb.py setup\n"
+              + browser)
+        return
+    if state == "denied":
+        print("\nmb: built fine, and the board is there -- but this user is not "
+              "allowed to open it.\n"
+              "    Install the udev rule once:\n"
+              f"      sudo cp {rel(UDEV_RULE)} /etc/udev/rules.d/\n"
+              "      sudo udevadm control --reload-rules && sudo udevadm trigger\n"
+              "    Then unplug and replug the board.  Or: python3 tools/mb.py setup\n"
+              + browser)
+        return
+    if in_container():
+        print("\nmb: built fine, but there is no USB access in a Codespace.\n"
+              "    Press Ctrl+Alt+F (the micro:bit flasher extension), which builds "
+              "and flashes.\n"
+              + browser)
+        return
+    print("\nmb: built fine, but no micro:bit is visible.\n"
+          "    Check the cable carries data -- some only carry power -- and that the\n"
+          "    board appears as a MICROBIT drive.  Then try again.\n"
+          + browser)
 
 
 def no_probe_hint() -> None:
-    print(
-        "\nmb: built fine, but no debug probe is visible here.\n"
-        "    In a Codespace there is no USB access: flash from the browser instead --\n"
-        "    press Ctrl+Alt+F (the micro:bit flasher extension), which builds and flashes.\n"
-        f"    Or download {rel(BUILD / 'main.hex')} and drag it onto the MICROBIT drive."
-    )
+    cannot_flash_hint(probe_state())
 
 
 def cmd_flash(args) -> int:
@@ -501,16 +559,18 @@ def cmd_flash(args) -> int:
     elf = BUILD / "main.elf"
     if not elf.is_file():
         die("nothing built yet - run: mb.py build")
-    if not probe_present():
-        no_probe_hint()
+    state = probe_state()
+    if state != "ok":
+        cannot_flash_hint(state)
         return 0
     return alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
                      rel(elf)])
 
 
 def cmd_erase(args) -> int:
-    if not probe_present():
-        no_probe_hint()
+    state = probe_state()
+    if state != "ok":
+        cannot_flash_hint(state)
         return 0
     return alr_exec([pyocd_path(), "erase", "--mass", "-t", TARGET])
 
@@ -983,6 +1043,44 @@ def _install_alr() -> bool:
     return False
 
 
+def _offer_path(args) -> None:
+    """Put our alr on PATH, so more than mb.py can find it.
+
+    mb.py itself does not need this -- alr_path() records where alr is. But a
+    student who types "alr" gets "not recognized", and VS Code's Ada extension
+    and integrated terminal look at PATH like everything else. On Windows the
+    user PATH lives in the registry and IS inherited by an application started
+    from the Start menu, so setting it there actually fixes those. On Linux and
+    macOS the equivalent edit only reaches terminals -- a desktop-launched
+    VS Code reads neither .bashrc nor, on Wayland, .profile -- so we print the
+    line rather than editing a shell file that would not have helped.
+    """
+    bindir = MANAGED_ALR_DIR / "bin"
+    if not any((bindir / n).is_file() for n in _bin_names("alr")):
+        return
+    if shutil.which("alr"):
+        return
+    if os.name != "nt":
+        print(f"           to type 'alr' yourself, add to your shell profile:")
+        print(f'             export PATH="$PATH:{bindir}"')
+        return
+    if not _ask(args, "Add alr to your PATH, so VS Code and you can find it?"):
+        print(f"           later, add this to PATH by hand: {bindir}")
+        return
+    # setx truncates at 1024 characters and expands %VARIABLES%; the .NET call
+    # does neither.
+    ps = ("$d = '{}'; "
+          "$p = [Environment]::GetEnvironmentVariable('Path','User'); "
+          "if ($p -notlike \"*$d*\") {{ "
+          "[Environment]::SetEnvironmentVariable('Path', "
+          "($p.TrimEnd(';') + ';' + $d), 'User') }}").format(bindir)
+    if run(["powershell", "-NoProfile", "-Command", ps], quiet=True) == 0:
+        print("  set      PATH now contains alr")
+        print("           close and reopen VS Code and any terminal to pick it up")
+    else:
+        print(f"           could not set PATH; add this by hand: {bindir}")
+
+
 def _ask(args, question: str) -> bool:
     """Ask before installing anything.
 
@@ -1042,6 +1140,42 @@ def _install_vscode(args) -> bool:
     return False
 
 
+def _toolchain_missing() -> list[str]:
+    """Which of the two toolchain pieces cannot actually be run through alr."""
+    missing = []
+    for name, probe in (("gnat_arm_elf", ["arm-eabi-gcc", "-dumpversion"]),
+                        ("gprbuild", ["gprbuild", "--version"])):
+        rc, _ = capture(["alr", "exec", "--"] + probe)
+        if rc != 0:
+            missing.append(name)
+    return missing
+
+
+def _toolchain_ok() -> bool:
+    return not _toolchain_missing()
+
+
+def _pyocd_problem() -> str | None:
+    """None when pyocd runs, otherwise one line saying what is wrong.
+
+    Works with nothing plugged in: "pyocd list" loads the USB backend and
+    prints that no probes are connected, which is a pass. A traceback there
+    means the install is broken (usually a missing libusb), and that is the
+    case worth catching at setup time rather than at flash time.
+    """
+    exe = pyocd_path()
+    if os.path.sep not in exe:
+        return "not installed"
+    rc, out = capture([exe, "--version"])
+    if rc != 0:
+        return f"installed at {exe} but it does not run: {_version_line(out) or out.strip()[:120]}"
+    rc, out = capture([exe, "list"])
+    if rc == 0 or "no available debug probes" in out.lower():
+        return None
+    last = [l for l in out.strip().splitlines() if l.strip()]
+    return f"cannot enumerate USB: {last[-1] if last else 'unknown error'}"
+
+
 def _install_pyocd() -> bool:
     """Into our own venv, not the system Python.
 
@@ -1064,6 +1198,39 @@ def _install_pyocd() -> bool:
             return False
     return run([str(venv_py), "-m", "pip", "install", "--quiet", "--upgrade",
                 "pyocd>=0.44"], quiet=True) == 0
+
+
+UDEV_TARGET = Path("/etc/udev/rules.d/50-microbit.rules")
+
+
+def _install_udev(args) -> None:
+    """Linux only: without this rule the device node is root-only.
+
+    It blocks pyocd *and* the browser flasher, which is why students saw WebUSB
+    fail with a security error after picking the board from the popup. udev runs
+    on the host kernel, so there is nothing to do inside a container.
+    """
+    if not sys.platform.startswith("linux") or in_container():
+        return
+    if not UDEV_RULE.is_file():
+        return
+    if (UDEV_TARGET.is_file()
+            and UDEV_TARGET.read_text() == UDEV_RULE.read_text()):
+        print("  OK       udev rule (the board is openable without root)")
+        return
+    print("  MISSING  udev rule -- without it nothing can open the micro:bit,")
+    print("           not pyocd and not the browser flasher")
+    if not _ask(args, "Install it now? sudo will ask for your password."):
+        print(f"           later:  sudo cp {rel(UDEV_RULE)} {UDEV_TARGET}")
+        print("                   sudo udevadm control --reload-rules && "
+              "sudo udevadm trigger")
+        return
+    if run(["sudo", "cp", str(UDEV_RULE), str(UDEV_TARGET)], quiet=True) != 0:
+        print("  FAILED   could not install the rule")
+        return
+    run(["sudo", "udevadm", "control", "--reload-rules"], quiet=True)
+    run(["sudo", "udevadm", "trigger"], quiet=True)
+    print("  set      udev rule installed -- unplug and replug the board")
 
 
 def _find_vscode() -> bool:
@@ -1181,6 +1348,7 @@ def cmd_setup(args) -> int:
             return 1
         rc, out = capture(["alr", "--version"])
         print(f"  OK       {_version_line(out)}")
+        _offer_path(args)
 
     # Written down now, in the terminal, where PATH works. A VS Code task has
     # its own environment and often does not, and this is what lets it run the
@@ -1193,32 +1361,56 @@ def cmd_setup(args) -> int:
         print("  set      msys2.do_not_install=true")
 
     # 4. Toolchain ----------------------------------------------------------
-    rc, _ = capture(["alr", "exec", "--", "arm-eabi-gcc", "-dumpversion"])
-    if rc == 0 and not args.force:
+    # The select is checked afterwards, not trusted: a Windows student ended up
+    # with Alire on disk and neither compiler nor gprbuild, and setup had said
+    # nothing. So: verify, try once more, and if it still is not there, say
+    # what to run by hand -- with the full path to alr, which is not on PATH.
+    if _toolchain_ok() and not args.force:
         print("  OK       toolchain already selected")
     else:
         info(f"installing gnat_arm_elf={GNAT_VERSION} and gprbuild={GPRBUILD_VERSION}")
         print("           about 550 MB, unpacking to roughly 2 GB -- this takes a while")
         run(["alr", "settings", "--global", "--set", "toolchain.assistant", "false"],
             quiet=True)
-        if run(["alr", "--non-interactive", "toolchain", "--select",
-                f"gnat_arm_elf={GNAT_VERSION}",
-                f"gprbuild={GPRBUILD_VERSION}"]) != 0:
-            print("  FAILED   toolchain install")
+        select = ["alr", "--non-interactive", "toolchain", "--select",
+                  f"gnat_arm_elf={GNAT_VERSION}", f"gprbuild={GPRBUILD_VERSION}"]
+        run(select)
+        if not _toolchain_ok():
+            info("the toolchain is not usable yet -- trying once more")
+            run(select)
+        missing = _toolchain_missing()
+        if not missing:
+            print("  OK       toolchain installed and verified")
+        else:
             ok = False
+            print(f"  FAILED   toolchain: {', '.join(missing)} not usable after two tries")
+            print("           Usually the download stopped part way (network, proxy,")
+            print("           or too little disk: it needs about 2 GB). Run this by")
+            print("           hand and read its output, then run setup again:")
+            print(f"             \"{alr_path()}\" toolchain --select "
+                  f"gnat_arm_elf={GNAT_VERSION} gprbuild={GPRBUILD_VERSION}")
+            print(f"           \"{alr_path()}\" toolchain   shows what is installed.")
 
-    # 5. pyocd (optional) ---------------------------------------------------
+    # 5. pyocd ---------------------------------------------------------------
+    # Checked the same way as Alire and the toolchain. It used to be a "note",
+    # so a student whose pyocd never installed learned that from a failed
+    # flash, with a message about Codespaces. No board is needed to check it:
+    # "pyocd list" exercises the whole USB stack and reports zero probes.
     if not args.no_pyocd:
-        if os.path.sep in pyocd_path():
+        if os.path.sep not in pyocd_path():
+            info("installing pyocd (for flashing and debugging from this machine)")
+            _install_pyocd()
+        problem = _pyocd_problem()
+        if problem is None:
             print(f"  OK       pyocd ({pyocd_path()})")
         else:
-            info("installing pyocd (for flashing and debugging from this machine)")
-            if _install_pyocd():
-                print(f"  OK       pyocd ({pyocd_path()})")
-            else:
-                print("  note     pyocd not installed -- you can still flash from "
-                      "the browser,")
-                print("           and build and prove work without it")
+            ok = False
+            print(f"  FAILED   pyocd: {problem}")
+            print("           Building and proving work without it. Flashing from")
+            print("           this machine does not; the browser flasher still does.")
+
+    # 6. udev (Linux, on the host) ------------------------------------------
+    _install_udev(args)
 
     print()
     if not ok:

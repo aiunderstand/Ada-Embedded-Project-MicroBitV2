@@ -105,6 +105,40 @@ the x64 one crashes on startup (`0xC0000005`). `mb.py setup` detects and says so
 `ada-error` / `ada-warning` / `ada-info`. Using `$ada` leaves the Problems panel
 empty and toasts an error on every build.
 
+**One boolean hid three different failures.** `probe_present()` returned False
+whether pyocd was missing, the udev rule was absent, or no board was plugged in,
+and every one of them printed "no debug probe is visible" plus an explanation
+about Codespaces -- to Windows students sitting in front of a plugged-in board.
+It reports a state now, and each state gets its own sentence. The Codespaces
+line is printed only when actually in a container.
+
+**Nothing can open the board on Linux without the udev rule.** Not pyocd, and
+not the browser flasher either: WebUSB's `open()` fails with a security error
+*after* the student picks the device from the popup, which reads as the page
+being broken. `setup` offers to install the rule. It is a host thing, so it is
+skipped in a container.
+
+**Verify an install, never trust its exit code.** `alr toolchain --select`
+returned 0 on a Windows machine that ended up with no compiler and no gprbuild.
+`setup` now probes both through `alr exec` afterwards, retries the select once,
+and on a second failure prints the exact command with the *full path* to alr,
+which is not on PATH. pyocd gets the same treatment: `pyocd list` with nothing
+plugged in loads the whole USB stack and reports zero probes, so a broken
+install (usually libusb) is caught at setup, not at the first flash.
+
+**GitHub says "not found" for a private repository.** With a stored credential
+that does not cover the repository, `git ls-remote` reports *repository not
+found*; with no credential at all it reports *could not read Username*. Both
+mean "sign in", and `get.py` routes both there; only a network error is fatal.
+`GIT_TERMINAL_PROMPT=0` makes that probe fail instantly instead of stalling on
+a username prompt, while still letting a helper with its own window open it.
+
+**`docs/get.py` is the step before everything else.** It is fetched on its own,
+before the repository exists, so it must stay standalone -- no imports from the
+repo. It installs git if needed, clones with `--recurse-submodules`, sets
+`core.longpaths` first on Windows, and hands over to `mb.py setup`. Keep every
+real decision in `mb.py`; this file only gets the student to it.
+
 **A VS Code task does not have the terminal's PATH.** Tasks here are
 `"type": "process"`, so they run with the editor's environment and no shell.
 Started from a dock or an applications menu, VS Code never reads `~/.bashrc`,
