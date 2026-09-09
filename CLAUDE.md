@@ -105,6 +105,37 @@ the x64 one crashes on startup (`0xC0000005`). `mb.py setup` detects and says so
 `ada-error` / `ada-warning` / `ada-info`. Using `$ada` leaves the Problems panel
 empty and toasts an error on every build.
 
+**A VS Code task does not have the terminal's PATH.** Tasks here are
+`"type": "process"`, so they run with the editor's environment and no shell.
+Started from a dock or an applications menu, VS Code never reads `~/.bashrc`,
+and on a Wayland session not `~/.profile` either -- so `~/.local/bin` and
+friends are absent, and a student saw `alr not found` from the build task while
+the same command worked in the integrated terminal. `alr_path()` therefore
+searches the places Alire actually installs itself (`~/.alire/bin`,
+`~/.local/share/alire`, ...), and `setup` records the absolute path it used in
+`~/.local/share/ada-microbit/alr-path`. Nothing we test could have caught this:
+CI puts alr on `PATH` itself, the devcontainer installs it to `/usr/local/bin`,
+and a fresh VM has no Alire, so `setup` installs it where we already looked.
+
+**Ubuntu will not `pip install --user`.** PEP 668 makes 23.04 and later refuse
+it (`externally-managed-environment`), and Ubuntu ships `python3` without pip
+anyway, so the old pyocd step failed on exactly the machines that needed it and
+reported it as a note. It installs into a venv under
+`~/.local/share/ada-microbit/venv` now, which also gives an absolute path the
+task can run without PATH. `python3-venv` is a separate apt package; when it is
+missing, say so and name the command.
+
+**A captured prompt is an invisible hang.** Windows students reported setup
+freezing with no output. Alire asks whether to install MSYS2 at *startup*, and
+`capture()` hid the question while leaving stdin on the terminal, so alr waited
+for an answer nobody could see it wanting. Two halves to the fix: `capture()`
+closes stdin, so a prompting command fails instead of blocking; and
+`skip_msys2()` runs before the *first* alr call rather than in the middle of
+`setup`, which had left `doctor`, `build` and Ctrl+Shift+B exposed. MSYS2 is
+Alire's system package manager -- this project cross-compiles and depends only
+on binary toolchain crates, so it needs nothing from it, which the Windows
+matrix leg proves by building with the flag set from its first command.
+
 **Alire chatter pollutes version probes.** `alr exec -- gprbuild --version` is
 preceded by `Note: Synchronizing workspace...` and dependency-solve lines that
 *contain digits*. `alr -q` suppresses the command's own output too, so `mb.py`

@@ -75,7 +75,9 @@ That is the whole installation. It:
 * finishes by checking everything.
 
 **You do not edit `PATH`, and you do not reboot.** Every build runs through
-Alire, which sets the environment itself.
+Alire, which sets the environment itself, and setup records where Alire is so
+VS Code finds it even when it was started from the desktop rather than a
+terminal.
 
 It is safe to run again — it skips whatever is already done, so it doubles as a
 repair command.
@@ -205,6 +207,39 @@ fails, delete `~/.config/alire` and try once more.
 
 **Windows: the clone failed with `Filename too long`.** Run the `core.longpaths`
 command in step 2, delete the folder, and clone again.
+
+**Windows: setup stops dead with no message.** Alire is asking "Do you want to
+install msys2?" where you cannot see the question, so it waits for ever. Press
+Ctrl+C and run this once, in the same terminal:
+
+```
+alr settings --global --set msys2.do_not_install true
+```
+
+Then run setup again. This project cross-compiles and needs nothing from msys2.
+The setting is per user, not per project, so you only ever do it once — and
+current versions of `mb.py` do it for you before Alire can ask. If an earlier
+attempt left an `msys64` folder in `%USERPROFILE%\.config\alire`, it is unused
+and you can delete it.
+
+**Linux: the build fails with `alr not found`, but it works in the terminal.**
+VS Code started from the dock or the applications menu does not inherit the
+PATH your terminal has, so it cannot see a tool you installed into your home
+directory. Run `python3 tools/mb.py setup` once in a terminal where
+`alr --version` works: it writes down where Alire is, and the tasks then use
+that. Starting VS Code with `code .` from that same terminal also works. The
+**Doctor** task prints the `alr` it resolved, so you can see which one it found.
+
+**Linux: `pyocd` did not install.** Ubuntu 23.04 and later refuse
+`pip install --user` and ship `python3` without `pip`. Setup now installs pyocd
+into its own environment instead, which needs `python3-venv`:
+
+```shell
+sudo apt install python3-venv
+python3 tools/mb.py setup
+```
+
+Flashing from the browser needs none of this.
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.

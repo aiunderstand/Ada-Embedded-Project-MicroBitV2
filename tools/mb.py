@@ -60,9 +60,12 @@ ALR_SHA256 = {
     "x86_64-windows": "863013b1f94da6f3b7d0d5a74022ac3370424eeea9a470ebdb33d188d61b9125",
 }
 
-# Where "mb.py setup" puts alr when it is not already installed. Deliberately not
-# on PATH: nothing here should require the student to edit their environment.
-MANAGED_ALR_DIR = Path.home() / ".local" / "share" / "ada-microbit" / "alr"
+# Where "mb.py setup" puts what it installs. Deliberately not on PATH: nothing
+# here should require the student to edit their environment.
+MANAGED_DIR = Path.home() / ".local" / "share" / "ada-microbit"
+MANAGED_ALR_DIR = MANAGED_DIR / "alr"
+VENV_DIR = MANAGED_DIR / "venv"          # holds pyocd, immune to PEP 668
+ALR_POINTER = MANAGED_DIR / "alr-path"   # the alr setup actually used
 OBJCOPY = "arm-eabi-objcopy"
 SIZE = "arm-eabi-size"
 
@@ -152,31 +155,160 @@ def resolve_id(pid: str) -> tuple[str, Path]:
 # running things through Alire
 # --------------------------------------------------------------------------
 
-def alr_path() -> str:
-    """Where alr is, preferring one already on PATH.
+def _bin_names(stem: str) -> tuple[str, ...]:
+    return (stem, stem + ".exe") if os.name == "nt" else (stem,)
 
-    Falls back to the copy "mb.py setup" installs, so a student never has to
-    edit PATH for this project to work.
+
+def _search(dirs, stem: str) -> str | None:
+    for d in dirs:
+        for name in _bin_names(stem):
+            cand = Path(d) / name
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+    return None
+
+
+def _alr_dirs() -> list[Path]:
+    """Everywhere alr is normally installed, ours first.
+
+    PATH is not enough. A VS Code task is "type": "process", so it runs with the
+    editor's environment and no shell: launched from a dock or an application
+    menu it never sees ~/.bashrc, and on a Wayland session it does not see
+    ~/.profile either, so a per-user bin directory is simply absent. The build
+    then failed while the same command worked in the integrated terminal.
+    """
+    home = Path.home()
+    dirs = [MANAGED_ALR_DIR / "bin",
+            home / ".alire" / "bin",           # Alire's own install script
+            home / ".local" / "share" / "alire",  # its self-install location
+            home / ".local" / "bin",
+            home / "alr" / "bin",
+            home / ".cargo" / "bin",
+            Path("/usr/local/bin"), Path("/opt/alire/bin"), Path("/snap/bin")]
+    if os.name == "nt":
+        for var in ("LOCALAPPDATA", "USERPROFILE", "PROGRAMFILES"):
+            base = os.environ.get(var)
+            if base:
+                dirs += [Path(base) / "alire" / "bin", Path(base) / "alr" / "bin"]
+    return dirs
+
+
+def alr_path() -> str:
+    """Where alr is: PATH, then the one setup recorded, then the usual places.
+
+    The recorded pointer matters most. setup runs in a terminal, where PATH
+    works; the editor may not have that PATH, and this is how it still ends up
+    running the very same alr.
     """
     found = shutil.which("alr")
     if found:
         return found
-    for name in ("alr", "alr.exe"):
-        managed = MANAGED_ALR_DIR / "bin" / name
-        if managed.is_file():
-            return str(managed)
-    return "alr"
+    try:
+        noted = ALR_POINTER.read_text().strip()
+        if noted and Path(noted).is_file() and os.access(noted, os.X_OK):
+            return noted
+    except OSError:
+        pass
+    return _search(_alr_dirs(), "alr") or "alr"
+
+
+def remember_alr() -> None:
+    """Record the resolved alr, so a task without PATH finds the same one."""
+    found = alr_path()
+    if os.path.sep not in found:            # bare name: nothing worth recording
+        return
+    try:
+        MANAGED_DIR.mkdir(parents=True, exist_ok=True)
+        ALR_POINTER.write_text(str(Path(found).resolve()) + "\n")
+    except OSError:
+        pass                                 # a note, never a reason to fail
+
+
+def pyocd_path() -> str:
+    """pyocd, wherever pip or a venv put it -- see _alr_dirs() for why PATH is
+    not enough. Ours first: it is the one whose version we control."""
+    home = Path.home()
+    dirs = [VENV_DIR / ("Scripts" if os.name == "nt" else "bin")]
+    found = _search(dirs, "pyocd")
+    if found:
+        return found
+    found = shutil.which("pyocd")
+    if found:
+        return found
+    try:
+        import site
+        base = Path(site.getuserbase())      # where "pip install --user" lands
+        dirs.append(base / ("Scripts" if os.name == "nt" else "bin"))
+    except Exception:                        # noqa: BLE001
+        pass
+    dirs += [home / ".local" / "bin", Path("/usr/local/bin")]
+    return _search(dirs, "pyocd") or "pyocd"
+
+
+_msys2_guarded = False
+
+
+def skip_msys2() -> None:
+    """Tell Alire not to install MSYS2, before it ever gets the chance to ask.
+
+    Windows-only, and every Alire call goes through here first, because the
+    question is asked at *startup* -- so setting this in "setup" alone left
+    "doctor", "build" and the Ctrl+Shift+B task to hit the prompt on a machine
+    where alr had never run. MSYS2 is Alire's system package manager; this
+    project cross-compiles and depends only on binary toolchain crates, so it
+    needs nothing from it (the Windows CI leg builds with this set from its
+    first command).
+
+    Sets it once per process rather than reading it back: one extra alr call is
+    cheaper than two, and writing it again is harmless.
+    """
+    global _msys2_guarded
+    if _msys2_guarded or os.name != "nt":
+        return
+    try:
+        subprocess.run([alr_path(), "settings", "--global",
+                        "--set", "msys2.do_not_install", "true"],
+                       cwd=REPO, stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True)
+    except OSError:
+        # No alr on this machine yet. Do NOT latch: "setup" probes for alr,
+        # installs it, and probes again -- and that second call is the first one
+        # that can be asked the question.
+        return
+    _msys2_guarded = True
+
+
+def _not_found(prog: str) -> str:
+    """Name the actual mistake. "alr not found" usually means it IS installed,
+    just not visible here: a VS Code task started from the desktop does not have
+    the terminal's PATH."""
+    if not prog.endswith("alr"):
+        return f"{prog} not found."
+    return "\n".join([
+        "alr not found.",
+        "",
+        "  If 'alr --version' works in a terminal, Alire IS installed and this",
+        "  process simply cannot see it -- a VS Code task started from the",
+        "  desktop does not have the terminal's PATH. Either fix works:",
+        "",
+        "    run 'python3 tools/mb.py setup' in that terminal   (records where it is)",
+        "    or close VS Code and start it with 'code .' from there",
+        "",
+        "  If that command does not work either, Alire is not installed yet:",
+        "  'python3 tools/mb.py setup' installs it.",
+    ])
 
 
 def run(cmd: list[str], quiet: bool = False) -> int:
     if not quiet:
         info(" ".join(cmd))
     if cmd and cmd[0] == "alr":
+        skip_msys2()
         cmd = [alr_path()] + cmd[1:]
     try:
         return subprocess.call(cmd, cwd=REPO)
     except FileNotFoundError:
-        die(f"{cmd[0]} not found. Install Alire and re-open the terminal.", 127)
+        die(_not_found(cmd[0]), 127)
 
 
 def alr_exec(args: list[str], quiet: bool = False) -> int:
@@ -184,11 +316,20 @@ def alr_exec(args: list[str], quiet: bool = False) -> int:
 
 
 def capture(cmd: list[str]) -> tuple[int, str]:
-    """Run and capture. Status is the command's own, never a pipeline's."""
+    """Run and capture. Status is the command's own, never a pipeline's.
+
+    stdin is closed on purpose. Capturing the output hides any prompt the
+    command writes, while an inherited terminal still makes it *look* answerable
+    -- so a question like Alire's MSYS2 one waited on input that could never
+    arrive, and the student saw a cursor and nothing else. With no stdin a
+    prompting command fails immediately and we report its output.
+    """
     if cmd and cmd[0] == "alr":
+        skip_msys2()
         cmd = [alr_path()] + cmd[1:]
     try:
-        p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+        p = subprocess.run(cmd, cwd=REPO, stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True)
     except FileNotFoundError:
         return 127, ""
     return p.returncode, (p.stdout + p.stderr)
@@ -336,7 +477,7 @@ def build_all(args) -> int:
 # --------------------------------------------------------------------------
 
 def probe_present() -> bool:
-    rc, out = capture(["pyocd", "list"])
+    rc, out = capture([pyocd_path(), "list"])
     if rc != 0:
         return False
     return bool([l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
@@ -363,14 +504,15 @@ def cmd_flash(args) -> int:
     if not probe_present():
         no_probe_hint()
         return 0
-    return alr_exec(["pyocd", "load", "-t", TARGET, "--format", "elf", rel(elf)])
+    return alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
+                     rel(elf)])
 
 
 def cmd_erase(args) -> int:
     if not probe_present():
         no_probe_hint()
         return 0
-    return alr_exec(["pyocd", "erase", "--mass", "-t", TARGET])
+    return alr_exec([pyocd_path(), "erase", "--mass", "-t", TARGET])
 
 
 def proof_gpr(gpr: Path) -> Path:
@@ -900,6 +1042,30 @@ def _install_vscode(args) -> bool:
     return False
 
 
+def _install_pyocd() -> bool:
+    """Into our own venv, not the system Python.
+
+    "pip install --user" is refused outright on Ubuntu 23.04 and later
+    (PEP 668, "externally-managed-environment"), and Ubuntu ships python3
+    without pip at all, so the old call failed on exactly the machines that
+    need it and the failure was reported as a note. A venv sidesteps both, and
+    gives an absolute path the VS Code task can use without PATH.
+    """
+    venv_py = VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / (
+        "python.exe" if os.name == "nt" else "python3")
+    if not venv_py.is_file():
+        rc = run([sys.executable, "-m", "venv", str(VENV_DIR)], quiet=True)
+        if rc != 0 or not venv_py.is_file():
+            # Debian and Ubuntu split venv out of the standard library.
+            print("           this machine's Python cannot create a virtual "
+                  "environment.")
+            if sys.platform.startswith("linux"):
+                print("           install it with:  sudo apt install python3-venv")
+            return False
+    return run([str(venv_py), "-m", "pip", "install", "--quiet", "--upgrade",
+                "pyocd>=0.44"], quiet=True) == 0
+
+
 def _find_vscode() -> bool:
     """Is VS Code installed?
 
@@ -1016,11 +1182,14 @@ def cmd_setup(args) -> int:
         rc, out = capture(["alr", "--version"])
         print(f"  OK       {_version_line(out)}")
 
+    # Written down now, in the terminal, where PATH works. A VS Code task has
+    # its own environment and often does not, and this is what lets it run the
+    # same alr instead of failing with "alr not found".
+    remember_alr()
+
     if os.name == "nt":
-        # Otherwise alr stops to install MSYS2, which a cross-compile-only
-        # project never needs.
-        run(["alr", "settings", "--global", "--set", "msys2.do_not_install", "true"],
-            quiet=True)
+        # Already done by skip_msys2() before the first alr call above; say so,
+        # because a student who hit the old hang needs to see it is now off.
         print("  set      msys2.do_not_install=true")
 
     # 4. Toolchain ----------------------------------------------------------
@@ -1040,14 +1209,16 @@ def cmd_setup(args) -> int:
 
     # 5. pyocd (optional) ---------------------------------------------------
     if not args.no_pyocd:
-        if shutil.which("pyocd"):
-            print("  OK       pyocd")
+        if os.path.sep in pyocd_path():
+            print(f"  OK       pyocd ({pyocd_path()})")
         else:
             info("installing pyocd (for flashing and debugging from this machine)")
-            rc = run([sys.executable, "-m", "pip", "install", "--user", "--quiet",
-                      "--upgrade", "pyocd>=0.44"], quiet=True)
-            if rc != 0:
-                print("  note     pyocd not installed -- you can still flash from the browser")
+            if _install_pyocd():
+                print(f"  OK       pyocd ({pyocd_path()})")
+            else:
+                print("  note     pyocd not installed -- you can still flash from "
+                      "the browser,")
+                print("           and build and prove work without it")
 
     print()
     if not ok:
@@ -1066,6 +1237,9 @@ def cmd_doctor(args) -> int:
     chosen = PROJECT_FILE.read_text().strip() if PROJECT_FILE.is_file() else "template"
     print(f"Project: {chosen}  (Choose project... changes it; 'template' is your own program)")
     print("Build tools (required):")
+    # The resolved path, not just a version: "works in the terminal, MISSING in
+    # the task" is a PATH problem, and this is the line that shows it.
+    print(f"  using    alr: {alr_path()}")
     critical_ok = True
     for name, probe in (("alr", ["alr", "--version"]),
                         ("gprbuild", ["alr", "exec", "--", "gprbuild", "--version"]),
@@ -1080,7 +1254,7 @@ def cmd_doctor(args) -> int:
             critical_ok = False
 
     print("\nFlashing / debugging (optional - not available in a Codespace):")
-    for name, probe in (("pyocd", ["pyocd", "--version"]),
+    for name, probe in (("pyocd", [pyocd_path(), "--version"]),
                         ("arm-eabi-gdb", ["alr", "exec", "--", "arm-eabi-gdb", "--version"])):
         rc, out = capture(probe)
         first = _version_line(out)
