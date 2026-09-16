@@ -395,12 +395,15 @@ def built_exe(gpr: Path) -> Path:
     return OBJ_TREE / rel(gpr.parent) / "obj" / "main"
 
 
-def build_one(pid: str, gpr: Path, quiet: bool = False) -> bool:
+def build_one(pid: str, gpr: Path, quiet: bool = False, verbose: bool = False) -> bool:
+    # -v makes gprbuild print every command it runs, the link line included:
+    # a linker error names a file it could not find, and only the command
+    # shows where it looked.
     if pid == "template":
-        cmd = ["alr", "build", "--"] + RELOCATE
+        cmd = ["alr", "build", "--"] + (["-v"] if verbose else []) + RELOCATE
     else:
         cmd = ["alr", "exec", "--", "gprbuild", "-j0", "-p", "-P", rel(gpr)] + \
-              RELOCATE + ["-cargs:ada", "-gnatef"]
+              (["-v"] if verbose else []) + RELOCATE + ["-cargs:ada", "-gnatef"]
     if quiet:
         rc, out = capture(cmd)
         if rc != 0:
@@ -478,7 +481,7 @@ def cmd_build(args) -> int:
         return build_all(args)
     pid, gpr = chosen_project(args)
     info(f"building {pid} ({rel(gpr)})")
-    if not build_one(pid, gpr):
+    if not build_one(pid, gpr, verbose=getattr(args, "verbose", False)):
         return 1
     stage_firmware(gpr, pid)
     return 0
@@ -1664,6 +1667,8 @@ def main() -> int:
         p.add_argument("--use", metavar="ID", help="project id (see: mb.py list)")
         p.add_argument("--use-dir", metavar="DIR",
                        help="build the project at or above DIR (for ${fileDirname})")
+        p.add_argument("-v", "--verbose", action="store_true",
+                       help="show every command gprbuild runs, the link line included")
 
     p = sub.add_parser("build", help="build a project")
     target_flags(p)
