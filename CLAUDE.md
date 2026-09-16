@@ -68,6 +68,7 @@ node tools/test_flasher.mjs          # the browser flasher
 node tools/test_extension.mjs        # the VS Code extension
 node tools/test_gdbserver.mjs        # the gdb server, on a fake board
 node tools/test_companion.mjs        # the companion's gdb relay, over a real socket
+python3 tools/test_mb.py             # mb.py's probe verdicts, and capture() in UTF-8
 ```
 
 **Prove that a new test can fail.** Break the thing deliberately, watch the
@@ -116,7 +117,15 @@ without a permission word counted as no board -- and only our venv copy was
 ever asked, while the student's own `pyocd list`, on PATH, showed the board.
 `probe_check()` now asks every pyocd on the machine in turn, flashes with the
 first that sees the board, and every verdict names the pyocd it is about and
-quotes what it said, so the next report carries the evidence.
+quotes what it said, so the next report carries the evidence. Round three,
+found by that evidence: `setup` said *cannot enumerate USB* and quoted the
+board's own row. pyocd 0.45's `list` prints a check mark next to the target;
+captured into a pipe on Windows, Python's stdout is cp1252, the check mark
+does not encode, and pyocd died mid-row with exit 1 after printing the board
+-- in a terminal the console takes UTF-8 and it worked. `mb.py` runs every
+child in UTF-8 mode (`PYTHONUTF8=1`), decodes what it captures as UTF-8, and
+treats a listed probe as proof of enumeration whatever the exit code.
+`tools/test_mb.py` runs in the Windows matrix leg, where the pipe is real.
 
 **Nothing can open the board on Linux without the udev rule.** Not pyocd, and
 not the browser flasher either: WebUSB's `open()` fails with a security error

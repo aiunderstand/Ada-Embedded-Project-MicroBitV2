@@ -130,6 +130,13 @@ jobs:
         shell: bash
         run: python3 tools/mb.py build
 
+      # On Windows this is the real thing: a captured child's stdout is
+      # cp1252 unless mb.py puts it in UTF-8 mode, and pyocd's check mark
+      # then kills "pyocd list" after it has printed the board.
+      - name: Probe detection regression test
+        shell: bash
+        run: python3 tools/test_mb.py
+
       - name: Working tree must be clean
         shell: bash
         run: |
@@ -248,6 +255,9 @@ jobs:
 
       - name: Companion gdb relay regression test (real socket)
         run: node tools/test_companion.mjs
+
+      - name: Probe detection regression test
+        run: python3 tools/test_mb.py
 
       # vsce is what publishes to the Marketplace; running its packaging here
       # means a release can only fail on credentials, never on the manifest.

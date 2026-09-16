@@ -323,6 +323,24 @@ def _not_found(prog: str) -> str:
     ])
 
 
+# Children run in UTF-8 mode, and our own output never dies on a character.
+#
+# pyocd 0.45's "list" prints a check mark next to the target. Captured into a
+# pipe on Windows, Python encodes stdout as cp1252, where that character does
+# not exist, so pyocd printed the board's row and then died with exit 1 --
+# while the same command in a terminal, whose console takes UTF-8, listed the
+# board fine. setup reported "cannot enumerate USB" with the board's own row
+# as the evidence. UTF-8 mode fixes stdout for every Python child, capture()
+# decodes the same way, and since we then print what pyocd said, our own
+# stdout must not refuse the character either.
+os.environ["PYTHONUTF8"] = "1"
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+
 def run(cmd: list[str], quiet: bool = False) -> int:
     if not quiet:
         info(" ".join(cmd))
@@ -353,10 +371,15 @@ def capture(cmd: list[str]) -> tuple[int, str]:
         cmd = [alr_path()] + cmd[1:]
     try:
         p = subprocess.run(cmd, cwd=REPO, stdin=subprocess.DEVNULL,
-                           capture_output=True, text=True)
+                           capture_output=True, encoding="utf-8", errors="replace")
     except FileNotFoundError:
         return 127, ""
-    return p.returncode, (p.stdout + p.stderr)
+    # A command that dies mid-line leaves stdout without its newline; joined
+    # flat, the error then reads as the tail of the last line it printed.
+    out = p.stdout
+    if out and p.stderr and not out.endswith("\n"):
+        out += "\n"
+    return p.returncode, out + p.stderr
 
 
 # --------------------------------------------------------------------------
@@ -514,6 +537,18 @@ class ProbeCheck(NamedTuple):
     tried: tuple = ()   # every pyocd that was asked
 
 
+# A row of "pyocd list": an index, then the probe, then a unique ID, a
+# micro:bit or its target. Not a log line, which also starts with digits
+# ("0000143 C ..." in pyocd 0.45, "0001234:CRITICAL:..." before it).
+_PROBE_ROW = re.compile(r"^\s*\d+\s+\S.*(?:[0-9a-f]{8,}|micro:bit|cmsis-dap|0d28|"
+                        + TARGET + ")", re.I)
+_LOG_LINE = re.compile(r"^\s*\d+(?:\s[A-Z]\s|:[A-Z]+:)")
+
+
+def _probe_rows(out: str) -> list[str]:
+    return [l for l in out.splitlines() if _PROBE_ROW.match(l) and not _LOG_LINE.match(l)]
+
+
 def _tail(out: str, lines: int = 3) -> str:
     kept = [l.strip()[:110] for l in out.strip().splitlines() if l.strip()]
     return "\n             ".join(kept[-lines:]) if kept else "(nothing)"
@@ -544,25 +579,25 @@ def probe_check() -> ProbeCheck:
     for exe in cands:
         rc, out = capture([exe, "list"])
         low = out.lower()
-        verdict = None
         if rc == 127:
             continue
-        if rc != 0:
-            # libusb cannot open the device without the udev rule; it says so
-            # in several different wordings depending on the version.
-            if any(w in low for w in ("access denied", "permission", "error_access",
-                                      "not permitted")):
-                return ProbeCheck("denied", exe, rc, _tail(out), tuple(cands))
-            verdict = "no-probe" if "no available debug probes" in low else "broken"
-        elif any(w in low for w in ("no available debug probes", "no probes")):
-            verdict = "no-probe"
-        elif [l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
-                or re.match(r"^\s*\d+\s", l)]:
+        # libusb cannot open the device without the udev rule; it says so in
+        # several different wordings depending on the version.
+        if rc != 0 and any(w in low for w in ("access denied", "permission",
+                                              "error_access", "not permitted")):
+            return ProbeCheck("denied", exe, rc, _tail(out), tuple(cands))
+        if _probe_rows(out):
+            # The board is in the listing, so USB works, whatever the exit
+            # code says (a pyocd that died *after* the row has still seen it).
             if exe != cands[0]:
                 _pyocd_fallback = exe
                 info(f"note: flashing with {exe}; ours ({cands[0]}) "
                      "did not find the board")
+            if rc != 0:
+                info(f"note: {exe} listed the board but exited with {rc}")
             return ProbeCheck("ok", exe, rc, _tail(out), tuple(cands))
+        if rc != 0 and "no available debug probes" not in low:
+            verdict = "broken"
         else:
             verdict = "no-probe"
         if first is None:
@@ -1245,7 +1280,10 @@ def _pyocd_problem() -> str | None:
     if rc != 0:
         return f"installed at {exe} but it does not run: {_version_line(out) or out.strip()[:120]}"
     rc, out = capture([exe, "list"])
-    if rc == 0 or "no available debug probes" in out.lower():
+    # A listed probe is proof of enumeration, whatever the exit code: on
+    # Windows, pyocd 0.45 printed the board and then died on a check mark it
+    # could not encode -- see capture() -- and this line blamed USB for it.
+    if rc == 0 or "no available debug probes" in out.lower() or _probe_rows(out):
         return None
     last = [l for l in out.strip().splitlines() if l.strip()]
     return f"cannot enumerate USB: {last[-1] if last else 'unknown error'}"
