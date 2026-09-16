@@ -213,6 +213,18 @@ install — hot-swap rules, a one-year cache, `__metadata`, `.obsolete`, file
 modes — all real, all beside the point. `code serve-web` shows neither: its
 worker is same-origin and its policy allows any `https:`.
 
+**Desktop VS Code runs the web extension too, with `navigator.usb` and no
+picker.** The flasher is a workspace recommendation, so a student on their own
+PC installs it into desktop VS Code, which loads a browser-only extension in
+its own web worker host. Electron gives that worker a `navigator.usb` that
+answers `getDevices()` with nothing, so "is there WebUSB" said yes -- and the
+next call, `workbench.experimental.requestUsbDevice`, is registered by the
+browser workbench only: `command ... not found`, on a Windows PC with the board
+plugged in and pyocd working. `uiKind` is the test, not `navigator.usb`; on the
+desktop Ctrl+Alt+F runs the *Build & Flash* task instead, so the key does the
+same job on every path. `tools/test_extension.mjs` loads the bundle as that
+worker, `uiKind` Desktop and `navigator.usb` present.
+
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
 worker's `ExtHostTask` only accepts `CustomExecution` tasks; a shell or process
 task like "Build" throws `NotSupported` before anything runs. Use

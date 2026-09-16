@@ -14,6 +14,11 @@
 //  It is marked experimental but is present in current VS Code, and is the same
 //  mechanism the ESP-IDF Web extension uses. After the user picks the board,
 //  navigator.usb.getDevices() returns it here and flashing proceeds normally.
+//
+//  Desktop VS Code loads this extension as well (it is a workspace
+//  recommendation, so a student on their own PC has it). There the picker
+//  command does not exist, and the board belongs to pyocd: Ctrl+Alt+F runs the
+//  workspace's "Build & Flash" task instead, and the Serial view cannot connect.
 
 /* global createUSBConnection, GdbServer */
 
@@ -308,11 +313,20 @@ async function ensureConnected() {
   if (liveConnection()) {
     return connection;
   }
+  if (vscode.env.uiKind !== vscode.UIKind.Web) {
+    // Desktop VS Code runs this web extension in a worker whose
+    // Electron-backed navigator.usb exists and answers getDevices() with
+    // nothing -- so the usbAvailable() check below said yes on a Windows PC,
+    // and the next call, the workbench's device picker, is registered by the
+    // browser build only:
+    //   Error: command 'workbench.experimental.requestUsbDevice' not found
+    // The picker is a browser thing, and so is everything past this point.
+    throw new Error(desktopAdvice());
+  }
   if (!usbAvailable()) {
     throw new Error(
-      "This VS Code cannot reach USB devices. Flashing from here needs a " +
-        "Chromium-based browser (Chrome, Edge or Opera). In desktop VS Code, " +
-        "flash with: python3 tools/mb.py flash"
+      "This browser has no WebUSB. Flashing from here needs a Chromium-based " +
+        "browser (Chrome, Edge or Opera)."
     );
   }
 
@@ -341,11 +355,31 @@ async function connectIfAuthorised() {
   if (liveConnection()) {
     return connection;
   }
-  if (!usbAvailable()) {
+  if (vscode.env.uiKind !== vscode.UIKind.Web || !usbAvailable()) {
     return null;
   }
   const device = await authorisedDevice();
   return device ? connectTo(device) : null;
+}
+
+/** What to do on a desktop, where this extension cannot reach the board. */
+function desktopAdvice() {
+  if (vscode.env.remoteName) {
+    // Desktop VS Code attached to a Codespace: the board is on this machine,
+    // pyocd in the Codespace cannot see it, and mb.py's own hint for that
+    // case says "press Ctrl+Alt+F" -- which is what just failed.
+    return (
+      "This VS Code runs on your machine, which has no USB picker, and the " +
+        "Codespace it is attached to has no USB at all. Open the Codespace in the " +
+        "browser (Chrome or Edge) and press Ctrl+Alt+F there, or download build/main.hex " +
+        "and drop it on https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/"
+    );
+  }
+  return (
+    "Desktop VS Code cannot open the board over WebUSB; here pyocd flashes it: " +
+      "press Ctrl+Shift+B (the Build & Flash task), or run python3 tools/mb.py flash. " +
+      "For serial output use any serial terminal at 115200 baud."
+  );
 }
 
 async function connectTo(device) {
@@ -438,21 +472,25 @@ async function cmdChooseProject() {
   });
   await vscode.commands.executeCommand("workbench.action.tasks.runTask", CHOOSE_TASK);
 }
+const FLASH_TASK = "Build & Flash"; // tasks.json: mb.py flash, i.e. pyocd
 const BUILD_TIMEOUT_MS = 10 * 60 * 1000; // a cold Codespace build can take minutes
 
 /** Run the workspace "Build" task and wait for it; null when there is none. */
-async function runBuildTask() {
+const runBuildTask = () => runTask(BUILD_TASK, "Building...");
+
+/** Run a workspace task by name and wait for it: its success, or null when there is none. */
+async function runTask(name, doing) {
   let task;
   try {
     const all = await vscode.tasks.fetchTasks();
-    task = all.find((t) => t.name === BUILD_TASK);
+    task = all.find((t) => t.name === name);
   } catch {
     return null;
   }
   if (!task) {
-    return null; // no task to run; fall back to whatever is already built
+    return null; // no task to run; the caller decides what that means
   }
-  log("Building...");
+  log(doing);
   setStatus("building", true);
   // Not vscode.tasks.executeTask: in the *web worker* extension host that only
   // accepts CustomExecution tasks and throws NotSupported for a shell/process
@@ -461,18 +499,40 @@ async function runBuildTask() {
   const finished = new Promise((resolve) => {
     const timer = setTimeout(() => { sub.dispose(); resolve(null); }, BUILD_TIMEOUT_MS);
     const sub = vscode.tasks.onDidEndTaskProcess((e) => {
-      if (e.execution.task.name === BUILD_TASK) {
+      if (e.execution.task.name === name) {
         clearTimeout(timer);
         sub.dispose();
         resolve(e.exitCode === 0);
       }
     });
   });
-  await vscode.commands.executeCommand("workbench.action.tasks.runTask", BUILD_TASK);
-  log(`Task "${BUILD_TASK}" started; waiting for it to finish...`);
+  await vscode.commands.executeCommand("workbench.action.tasks.runTask", name);
+  log(`Task "${name}" started; waiting for it to finish...`);
   const result = await finished;
   refreshProjectItem();
   return result;
+}
+
+/**
+ * Ctrl+Alt+F on a desktop. The board belongs to pyocd there, and the
+ * workspace already has a task for exactly that, so the one key does the
+ * same job on every path -- as F5 does through the one launch.json entry.
+ */
+async function flashWithPyocd() {
+  if (vscode.env.remoteName) {
+    throw new Error(desktopAdvice());
+  }
+  const result = await runTask(FLASH_TASK, "Desktop VS Code: building and flashing with pyocd...");
+  if (result === null) {
+    throw new Error(
+      `Desktop VS Code cannot open the board over WebUSB, and this workspace has no ` +
+        `"${FLASH_TASK}" task to run instead. In the course template: python3 tools/mb.py flash`
+    );
+  }
+  if (result === false) {
+    throw new Error(`"${FLASH_TASK}" failed; see the terminal. Nothing was flashed.`);
+  }
+  log(`Flashed with pyocd (the "${FLASH_TASK}" task).`);
 }
 
 /** Flash an Intel HEX text, with a progress notification. Ctrl+Alt+F and gdb's `load` both end here. */
@@ -502,6 +562,10 @@ async function cmdFlash() {
     // stop mid-flash and leave it debugging a program that is no longer there.
     if (gdb) {
       throw new Error("A debug session is running. Stop it first (Shift+F5); F5 rebuilds and reflashes.");
+    }
+    if (vscode.env.uiKind !== vscode.UIKind.Web) {
+      await flashWithPyocd();
+      return;
     }
     // The board first: Chrome shows the USB picker only while it is handling
     // the user's gesture, a window of about five seconds, and a full build is
@@ -651,6 +715,8 @@ const debugConfigurationProvider = {
 async function cmdStatus() {
   output.show(true);
   log("--- status ---");
+  log(`host: ${vscode.env.uiKind === vscode.UIKind.Web ? "browser" : "desktop VS Code"}` +
+      (vscode.env.remoteName ? ` attached to ${vscode.env.remoteName}` : ""));
   log(`navigator.usb available: ${typeof navigator !== "undefined" && !!navigator.usb}`);
   if (typeof navigator !== "undefined" && navigator.usb) {
     const devices = await navigator.usb.getDevices();
@@ -712,7 +778,7 @@ function activate(context) {
   // output starts flowing without the student doing anything.
   (async () => {
     try {
-      if (usbAvailable() && (await authorisedDevice())) {
+      if (vscode.env.uiKind === vscode.UIKind.Web && usbAvailable() && (await authorisedDevice())) {
         log("Board already authorised; connecting...");
         await connectIfAuthorised();
       }
@@ -722,11 +788,15 @@ function activate(context) {
   })();
 
   log("micro:bit flasher ready.");
-  if (typeof navigator === "undefined" || !navigator.usb) {
+  if (vscode.env.uiKind !== vscode.UIKind.Web) {
     log(
-      "note: navigator.usb is not available in this extension host, so this " +
-        "extension cannot flash here. That is expected in desktop VS Code; use " +
-        "python3 tools/mb.py flash instead."
+      `note: this is desktop VS Code, which has no USB picker. Ctrl+Alt+F runs the ` +
+        `"${FLASH_TASK}" task (pyocd) here; the Serial view cannot connect.`
+    );
+  } else if (!usbAvailable()) {
+    log(
+      "note: navigator.usb is not available in this browser, so this extension " +
+        "cannot flash here. Use Chrome, Edge or Opera."
     );
   }
 }

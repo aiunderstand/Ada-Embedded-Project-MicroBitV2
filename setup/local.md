@@ -295,10 +295,13 @@ sudo snap connect chromium:raw-usb
 Installing Chrome from its `.deb` avoids this entirely. Firefox has no WebUSB
 at all, and the page says so rather than failing to connect.
 
-**Flashing from VS Code does nothing on my own machine.** The flasher extension
-is for the browser. On your own machine flashing goes through pyocd instead:
-Ctrl+Shift+B, or `python3 tools/mb.py flash`. The extension says the same in its
-output panel.
+**Ctrl+Alt+F or "Flash micro:bit" fails with `command
+'workbench.experimental.requestUsbDevice' not found`.** That is the flasher
+extension, which is for the browser, running in desktop VS Code — it is a
+workspace recommendation, so it gets installed on your own machine too. Newer
+versions run the *Build & Flash* task (pyocd) there instead, the same as
+Ctrl+Shift+B: update it in the Extensions view. Its Serial view cannot connect
+on a desktop; use a serial terminal at 115200 baud.
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.

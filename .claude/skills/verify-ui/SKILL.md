@@ -73,7 +73,7 @@ paths.
 
 `tools/test_extension.mjs` loads the bundle into a mock `vscode` object. That
 catches packaging mistakes, not whether the extension activates in the real web
-worker host or whether its chord resolves. Two rigs, both in the scratchpad:
+worker host or whether its chord resolves. Three rigs, all in the scratchpad:
 
 **test-web — no remote, fastest.** Loads the assembled folder as a development
 extension, straight into the web worker host.
@@ -124,7 +124,41 @@ alt, cmd — `alt+cmd+f`, never `cmd+alt+f`. The platform follows the user agent
 so a `newContext({ userAgent })` spoofing Windows or Linux yields those tables
 from the same server.
 
-What neither rig can show: a Codespace's routing and content-security policy.
+**test-electron — desktop VS Code, where the picker does not exist.** Desktop
+VS Code loads a browser-only extension into its own web worker host: `uiKind`
+there is Desktop, `navigator.usb` exists (Electron), and
+`workbench.experimental.requestUsbDevice` is not registered (1.138.0). That is
+the host a student on their own PC has, since the flasher is a workspace
+recommendation. `@vscode/test-electron` downloads a VS Code into the
+scratchpad and runs a throwaway Node extension's `run()` in the same window;
+from there `executeCommand('microbit.flash')` crosses to the worker host, and
+`vscode.tasks.onDidStartTask` / `onDidEndTaskProcess` show what it did (on the
+desktop: the *Build & Flash* task, exit 0, `build/main.hex` rewritten).
+
+```bash
+cd "$SP" && npm install @vscode/test-electron
+python3 tools/mb.py extension --out "$SP/flasher"
+```
+
+```js
+const { runTests } = require('@vscode/test-electron');
+await runTests({
+  extensionDevelopmentPath: [tester, `${SP}/flasher`],   // both load; the flasher lands in the worker host
+  extensionTestsPath: `${tester}/test.js`,               // exports.run = async () => { ... executeCommand('microbit.flash') ... }
+  launchArgs: [repo, '--disable-extensions', '--disable-workspace-trust', '--user-data-dir', shortDir],
+});
+```
+
+Two things bite when this is started from the editor's own terminal. The
+environment carries `ELECTRON_RUN_AS_NODE=1`, which makes the downloaded Code
+run as plain Node and die with *Cannot find module <repo>*: run it under
+`env -u ELECTRON_RUN_AS_NODE`, and drop the `VSCODE_*` variables with it. And
+macOS limits a socket path to 104 bytes, so a user-data dir inside the
+scratchpad fails with `listen EINVAL … main.sock`; point `--user-data-dir` at a
+symlink under `$TMPDIR` to it instead. `getExtension()` from the Node host does
+not see the worker-hosted flasher; `getCommands()` does, and that is the check.
+
+What none of these can show: a Codespace's routing and content-security policy.
 That needs a Codespace and the published extension, and the diagnostic order
 that works there is *Show Running Extensions* → the **Extension Host (Worker)**
 channel → the Network tab filtered on `extension.js` → the Console for

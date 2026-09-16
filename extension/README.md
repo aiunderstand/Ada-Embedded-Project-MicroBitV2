@@ -35,8 +35,9 @@ browser (or vscode.dev / github.dev); if VS Code offers a choice, pick *Install
 in Browser*. Installed *into* the Codespace it can never start.
 
 It needs a Chromium browser — Chrome, Edge or Opera. Safari and Firefox have no
-WebUSB. In desktop VS Code there is no WebUSB either; flash with
-`python3 tools/mb.py flash` from the course template instead.
+WebUSB. Desktop VS Code has no USB picker, so there **Ctrl+Alt+F** runs the
+workspace's **Build & Flash** task instead, which flashes with pyocd (the course
+template's `python3 tools/mb.py flash`); the Serial view cannot connect there.
 
 ## Commands
 

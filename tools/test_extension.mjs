@@ -308,6 +308,68 @@ check(withoutDevice.commands.includes("workbench.experimental.requestUsbDevice")
       "with no authorised device, the workbench picker must be used");
 check(withoutDevice.reached >= 1, "the device the picker authorised must then be used");
 
+// ------------------------------------------------------------ desktop VS Code
+// Desktop VS Code loads web extensions too (this one is a workspace
+// recommendation, so a student on their own PC has it), in a worker whose
+// Electron-backed navigator.usb exists and answers getDevices() with nothing.
+// So "is there WebUSB" said yes on a Windows PC, and the next call was to the
+// workbench's device picker, which only the browser build registers:
+//   Error: command 'workbench.experimental.requestUsbDevice' not found
+// There the board belongs to pyocd: Ctrl+Alt+F runs the Build & Flash task.
+async function runDesktop({ command = "microbit.flash", tasks = ["Build & Flash", "Build"], exitCode = 0, remoteName } = {}) {
+  const commands = [], errors = [], listeners = [], handlersHere = {};
+  const vs = {
+    ...vscode,
+    env: { uiKind: 1, remoteName },
+    debug: { registerDebugConfigurationProvider: () => ({ dispose() {} }) },
+    window: { ...vscode.window, showErrorMessage: (m) => { errors.push(m); },
+              createOutputChannel: () => chan, createStatusBarItem: () => bar,
+              registerWebviewViewProvider: () => ({ dispose() {} }) },
+    commands: {
+      registerCommand: (id, fn) => { handlersHere[id] = fn; return { dispose() {} }; },
+      executeCommand: async (id, ...args) => {
+        commands.push([id, ...args].join(" "));
+        if (id === "workbench.experimental.requestUsbDevice") {
+          throw new Error("command 'workbench.experimental.requestUsbDevice' not found");
+        }
+        if (id === "workbench.action.tasks.runTask") {
+          // The task ends later, as an ordinary task event.
+          setTimeout(() => { for (const fn of listeners) fn({ execution: { task: { name: args[0] } }, exitCode }); }, 0);
+        }
+      },
+    },
+    tasks: { fetchTasks: async () => tasks.map((name) => ({ name })),
+             onDidEndTaskProcess: (fn) => { listeners.push(fn); return { dispose() {} }; } },
+    workspace: { workspaceFolders: [{ uri: {} }],
+                 fs: { stat: async () => ({}), readFile: async () => { throw new Error("missing"); } } },
+  };
+  // Electron's worker: navigator.usb is there, with no authorised device and no picker.
+  const nav = { usb: { getDevices: async () => [], addEventListener() {}, removeEventListener() {} } };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", "navigator", src)(
+    (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
+  m.exports.activate({ subscriptions: [] });
+  await handlersHere[command]();
+  return { commands, errors };
+}
+const desktopFlash = await runDesktop();
+check(desktopFlash.commands.includes("workbench.action.tasks.runTask Build & Flash"),
+      "on the desktop Ctrl+Alt+F runs the Build & Flash task: pyocd has the board there");
+check(!desktopFlash.commands.some((c) => /requestUsbDevice/.test(c)) && !desktopFlash.errors.length,
+      `on the desktop the workbench picker must never be asked for, it does not exist there (got: ${desktopFlash.errors})`);
+const desktopFailed = await runDesktop({ exitCode: 1 });
+check(desktopFailed.errors.some((e) => /terminal/.test(e)),
+      "a failed Build & Flash is reported, pointing at the terminal");
+const desktopNoTask = await runDesktop({ tasks: [] });
+check(!desktopNoTask.commands.some((c) => /runTask|requestUsbDevice/.test(c)) && desktopNoTask.errors.some((e) => /mb\.py flash/.test(e)),
+      "outside the template, with no Build & Flash task, the desktop is told to use mb.py flash");
+const desktopRemote = await runDesktop({ remoteName: "codespaces" });
+check(!desktopRemote.commands.some((c) => /runTask|requestUsbDevice/.test(c)) && desktopRemote.errors.some((e) => /browser/.test(e)),
+      "desktop VS Code attached to a Codespace: the task would answer 'press Ctrl+Alt+F'; say to open the Codespace in the browser instead");
+const desktopConnect = await runDesktop({ command: "microbit.connect" });
+check(!desktopConnect.commands.some((c) => /requestUsbDevice/.test(c)) && desktopConnect.errors.some((e) => /mb\.py flash/.test(e)),
+      "Connect on the desktop explains itself instead of asking for a picker that is not there");
+
 // -------------------------------------------------------------- debugging, on the board
 // These use the first module instance (`mod`/`handlers`), and run here rather
 // than up by the command-registration checks because they need runFlash's
