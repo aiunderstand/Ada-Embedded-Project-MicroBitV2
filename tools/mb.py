@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 BUILD = REPO / "build"
@@ -225,25 +226,47 @@ def remember_alr() -> None:
         pass                                 # a note, never a reason to fail
 
 
-def pyocd_path() -> str:
-    """pyocd, wherever pip or a venv put it -- see _alr_dirs() for why PATH is
-    not enough. Ours first: it is the one whose version we control."""
+def pyocd_candidates() -> list[str]:
+    """Every pyocd this machine has, ours first -- see _alr_dirs() for why
+    PATH is not enough. Ours is the one whose version we control; the others
+    are what a student installed themselves, and probe_check() falls back to
+    them when ours does not run or does not see the board."""
     home = Path.home()
-    dirs = [VENV_DIR / ("Scripts" if os.name == "nt" else "bin")]
-    found = _search(dirs, "pyocd")
-    if found:
-        return found
-    found = shutil.which("pyocd")
-    if found:
-        return found
+    bin_dir = "Scripts" if os.name == "nt" else "bin"
+    found = []
+    ours = _search([VENV_DIR / bin_dir], "pyocd")
+    if ours:
+        found.append(ours)
+    on_path = shutil.which("pyocd")
+    if on_path:
+        found.append(on_path)
+    dirs = []
     try:
         import site
-        base = Path(site.getuserbase())      # where "pip install --user" lands
-        dirs.append(base / ("Scripts" if os.name == "nt" else "bin"))
+        dirs.append(Path(site.getuserbase()) / bin_dir)   # "pip install --user"
     except Exception:                        # noqa: BLE001
         pass
     dirs += [home / ".local" / "bin", Path("/usr/local/bin")]
-    return _search(dirs, "pyocd") or "pyocd"
+    for d in dirs:
+        more = _search([d], "pyocd")
+        if more:
+            found.append(more)
+    unique = []
+    for f in found:
+        if Path(f).resolve() not in [Path(u).resolve() for u in unique]:
+            unique.append(f)
+    return unique
+
+
+_pyocd_fallback: str | None = None   # another pyocd, chosen because ours failed
+
+
+def pyocd_path() -> str:
+    """The pyocd to run: the one probe_check() found working, else ours."""
+    if _pyocd_fallback:
+        return _pyocd_fallback
+    cands = pyocd_candidates()
+    return cands[0] if cands else "pyocd"
 
 
 _msys2_guarded = False
@@ -483,44 +506,96 @@ def in_container() -> bool:
                 or Path("/.dockerenv").exists())
 
 
-def probe_state() -> str:
-    """Why flashing can or cannot happen: ok / no-pyocd / denied / no-probe.
+class ProbeCheck(NamedTuple):
+    state: str          # ok / no-pyocd / broken / denied / no-probe
+    exe: str            # the pyocd the verdict is about
+    rc: int
+    said: str           # the last lines it printed, for the message
+    tried: tuple = ()   # every pyocd that was asked
+
+
+def _tail(out: str, lines: int = 3) -> str:
+    kept = [l.strip()[:110] for l in out.strip().splitlines() if l.strip()]
+    return "\n             ".join(kept[-lines:]) if kept else "(nothing)"
+
+
+def probe_check() -> ProbeCheck:
+    """Why flashing can or cannot happen, and what pyocd said about it.
 
     These were one boolean, and every failure was reported as "no debug probe is
     visible", with a Codespaces explanation -- so a Windows student with the
     board plugged in and pyocd simply not on PATH was told about Codespaces.
-    Three different problems need three different sentences.
+    Different problems need different sentences.
+
+    A pyocd that crashes is another one. It was reported as "no micro:bit is
+    visible", to a student whose own pyocd, on PATH, listed the board fine:
+    any non-zero exit without a permission word counted as no board, and only
+    our venv copy was ever asked. So every pyocd on the machine is asked in
+    turn, the first that sees the board is the one used (pyocd_path() follows
+    it, and a note says so), and the report names the pyocd it is about and
+    quotes what it said -- the same lines the student would otherwise have to
+    go and find.
     """
-    if os.path.sep not in pyocd_path():
-        return "no-pyocd"
-    rc, out = capture([pyocd_path(), "list"])
-    if rc == 127:
-        return "no-pyocd"
-    low = out.lower()
-    if rc != 0:
-        # libusb cannot open the device without the udev rule; it says so in
-        # several different wordings depending on the version.
-        if any(w in low for w in ("access denied", "permission", "error_access",
-                                  "not permitted")):
-            return "denied"
-        return "no-probe"
-    if any(w in low for w in ("no available debug probes", "no probes")):
-        return "no-probe"
-    if [l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
-            or re.match(r"^\s*\d+\s", l)]:
-        return "ok"
-    return "no-probe"
+    global _pyocd_fallback
+    cands = pyocd_candidates()
+    if not cands:
+        return ProbeCheck("no-pyocd", "pyocd", 127, "")
+    first = None
+    for exe in cands:
+        rc, out = capture([exe, "list"])
+        low = out.lower()
+        verdict = None
+        if rc == 127:
+            continue
+        if rc != 0:
+            # libusb cannot open the device without the udev rule; it says so
+            # in several different wordings depending on the version.
+            if any(w in low for w in ("access denied", "permission", "error_access",
+                                      "not permitted")):
+                return ProbeCheck("denied", exe, rc, _tail(out), tuple(cands))
+            verdict = "no-probe" if "no available debug probes" in low else "broken"
+        elif any(w in low for w in ("no available debug probes", "no probes")):
+            verdict = "no-probe"
+        elif [l for l in out.splitlines() if TARGET in l or "0d28" in l.lower()
+                or re.match(r"^\s*\d+\s", l)]:
+            if exe != cands[0]:
+                _pyocd_fallback = exe
+                info(f"note: flashing with {exe}; ours ({cands[0]}) "
+                     "did not find the board")
+            return ProbeCheck("ok", exe, rc, _tail(out), tuple(cands))
+        else:
+            verdict = "no-probe"
+        if first is None:
+            first = ProbeCheck(verdict, exe, rc, _tail(out), tuple(cands))
+    return first or ProbeCheck("no-pyocd", cands[0], 127, "", tuple(cands))
+
+
+def probe_state() -> str:
+    return probe_check().state
 
 
 def probe_present() -> bool:
     return probe_state() == "ok"
 
 
-def cannot_flash_hint(state: str) -> None:
-    """Say which of the three things went wrong, and how to fix that one."""
+def cannot_flash_hint(check: ProbeCheck) -> None:
+    """Say which of the things went wrong, and how to fix that one."""
+    state = check.state
     browser = (f"    Or flash from the browser: download "
                f"{rel(BUILD / 'main.hex')} and drop it on\n"
                "    https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/")
+    # What was run and what it answered: the next report then carries it.
+    others = [t for t in check.tried if t != check.exe]
+    evidence = (f"    pyocd used:  {check.exe}\n"
+                f"    it said:     {check.said}\n"
+                + (f"    also tried:  {', '.join(others)} -- same answer\n" if others else ""))
+    if state == "broken":
+        print("\nmb: built fine, but pyocd does not run on this machine, so it "
+              "cannot flash.\n"
+              + evidence +
+              "    Reinstall it with:  python3 tools/mb.py setup\n"
+              + browser)
+        return
     if state == "no-pyocd":
         print("\nmb: built fine, but pyocd is not installed here, so it cannot flash.\n"
               "    Install it with:  python3 tools/mb.py setup\n"
@@ -544,11 +619,11 @@ def cannot_flash_hint(state: str) -> None:
     print("\nmb: built fine, but no micro:bit is visible.\n"
           "    Check the cable carries data -- some only carry power -- and that the\n"
           "    board appears as a MICROBIT drive.  Then try again.\n"
-          + browser)
+          + evidence + browser)
 
 
 def no_probe_hint() -> None:
-    cannot_flash_hint(probe_state())
+    cannot_flash_hint(probe_check())
 
 
 def cmd_flash(args) -> int:
@@ -559,18 +634,18 @@ def cmd_flash(args) -> int:
     elf = BUILD / "main.elf"
     if not elf.is_file():
         die("nothing built yet - run: mb.py build")
-    state = probe_state()
-    if state != "ok":
-        cannot_flash_hint(state)
+    check = probe_check()
+    if check.state != "ok":
+        cannot_flash_hint(check)
         return 0
     return alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
                      rel(elf)])
 
 
 def cmd_erase(args) -> int:
-    state = probe_state()
-    if state != "ok":
-        cannot_flash_hint(state)
+    check = probe_check()
+    if check.state != "ok":
+        cannot_flash_hint(check)
         return 0
     return alr_exec([pyocd_path(), "erase", "--mass", "-t", TARGET])
 
@@ -1452,7 +1527,12 @@ def cmd_doctor(args) -> int:
         first = _version_line(out)
         print(f"  {'OK      ' if rc == 0 else 'missing '} {name}"
               + (f": {first}" if rc == 0 else ""))
-    print(f"  {'OK       probe detected' if probe_present() else 'missing  no debug probe attached'}")
+    check = probe_check()
+    if check.state == "ok":
+        print(f"  OK       probe detected by {check.exe}")
+    else:
+        print(f"  missing  no debug probe attached ({check.state})\n"
+              f"           {check.exe} said: {check.said}")
 
     if not critical_ok:
         print("\nA build tool is missing. Run:  alr toolchain --select")

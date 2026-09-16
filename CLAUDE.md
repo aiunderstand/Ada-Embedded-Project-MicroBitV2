@@ -110,7 +110,13 @@ whether pyocd was missing, the udev rule was absent, or no board was plugged in,
 and every one of them printed "no debug probe is visible" plus an explanation
 about Codespaces -- to Windows students sitting in front of a plugged-in board.
 It reports a state now, and each state gets its own sentence. The Codespaces
-line is printed only when actually in a container.
+line is printed only when actually in a container. Round two: a pyocd that
+*crashed* was still "no micro:bit is visible", because any non-zero exit
+without a permission word counted as no board -- and only our venv copy was
+ever asked, while the student's own `pyocd list`, on PATH, showed the board.
+`probe_check()` now asks every pyocd on the machine in turn, flashes with the
+first that sees the board, and every verdict names the pyocd it is about and
+quotes what it said, so the next report carries the evidence.
 
 **Nothing can open the board on Linux without the udev rule.** Not pyocd, and
 not the browser flasher either: WebUSB's `open()` fails with a security error

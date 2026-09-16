@@ -267,11 +267,16 @@ python3 tools/mb.py setup
 
 Flashing from the browser needs none of this.
 
-**Flashing says pyocd is missing, or that no micro:bit is visible.** Those are
-different problems and the message says which one you have. "pyocd is not
-installed" is fixed by running setup again. "No micro:bit is visible" usually
-means the cable carries power but not data, so the board never appears as a
-MICROBIT drive.
+**Flashing says pyocd is missing, does not run, or that no micro:bit is
+visible.** Those are different problems and the message says which one you
+have, which pyocd it asked (setup installs its own copy, under
+`~/.local/share/ada-microbit/venv`, or `%USERPROFILE%\.local\share\ada-microbit\venv`
+on Windows) and what that pyocd answered. "pyocd is not installed" and "pyocd
+does not run" are fixed by running setup again. "No micro:bit is visible"
+usually means the cable carries power but not data, so the board never appears
+as a MICROBIT drive. If a `pyocd list` you run yourself does see the board,
+the tool asks that pyocd too and flashes with it; `python3 tools/mb.py doctor`
+shows the whole picture.
 
 **Windows: the build works but `alr` is not recognised in a terminal.** Setup
 installs Alire into your user folder rather than editing PATH. It offers to add
