@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "AIUnderstand.microbit-flasher",
-        "AdaCore.ada"
+        "AdaCore.ada",
+        "ms-vscode.vscode-serial-monitor"
     ]
 }

@@ -263,10 +263,12 @@ A Codespace has **no USB**. Five consequences:
    does not. The serial console *is* a webview view — the extension holds the
    device and the view only shows and asks. On a desktop nothing can hold
    the device, so the output is read with Microsoft's **Serial Monitor**
-   extension on DAPLink's serial port (`setup/local.md`, step 7). It is a
-   desktop-only extension and the recommendations list is one for every
-   path, so it is documented rather than recommended; the flasher's own
-   messages point at it. An `mb.py serial` monitor of our own (pyserial,
+   extension on DAPLink's serial port (`setup/local.md`, step 7). It is in
+   `.vscode/extensions.json` -- desktop-only, so in a Codespace "Install
+   All" puts it in the container where it does nothing, which is accepted
+   -- and `mb.py setup` installs every recommendation through the `code`
+   command on a desktop, so it is there before the first program prints;
+   `doctor` lists which are installed. An `mb.py serial` monitor of our own (pyserial,
    auto-detected port, opened by the desktop Ctrl+Alt+F) was written and
    set aside on branch `desktop-serial-monitor`, in case "which COM port?"
    turns out to be a support burden.

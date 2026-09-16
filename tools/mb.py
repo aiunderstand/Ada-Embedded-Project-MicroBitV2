@@ -26,6 +26,7 @@ built, so launch.json and the CI artifact have a stable path.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -1350,6 +1351,66 @@ def _install_udev(args) -> None:
     print("  set      udev rule installed -- unplug and replug the board")
 
 
+def code_cli() -> str | None:
+    """VS Code's "code" command, wherever it is -- see _find_vscode() for why
+    PATH is not enough. This is what installs extensions from setup."""
+    for name in ("code", "code-insiders"):
+        found = shutil.which(name)
+        if found:
+            return found
+    candidates = [
+        Path("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"),
+        Path.home() / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Microsoft VS Code/bin/code.cmd",
+        Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft VS Code/bin/code.cmd",
+        Path("/usr/bin/code"),
+        Path("/usr/share/code/bin/code"),
+        Path("/snap/bin/code"),
+        Path("/var/lib/flatpak/exports/bin/com.visualstudio.code"),
+    ]
+    for c in candidates:
+        if str(c) not in ("", ".") and c.is_file():
+            return str(c)
+    return None
+
+
+def recommended_extensions() -> list[str]:
+    """The workspace's recommended extensions: .vscode/extensions.json, the one
+    list, so setup and VS Code's own prompt never disagree."""
+    try:
+        text = (REPO / ".vscode" / "extensions.json").read_text()
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+        return [str(e) for e in json.loads(text).get("recommendations", [])]
+    except (OSError, ValueError):
+        return []
+
+
+def install_extensions() -> None:
+    """Install the recommended extensions through the "code" command.
+
+    VS Code offers them when the folder is opened, one click away; this puts
+    them in place before that, so Microsoft's Serial Monitor is there when the
+    first program prints. A Codespace gets its extensions from
+    devcontainer.json instead, and nothing here is fatal: the prompt remains.
+    """
+    if in_container():
+        return
+    cli = code_cli()
+    if not cli:
+        print("  skipped  VS Code extensions: no 'code' command found. VS Code offers "
+              "the recommended ones when you open the folder.")
+        return
+    for ext in recommended_extensions():
+        rc, out = capture([cli, "--install-extension", ext])
+        if rc == 0:
+            state = "already installed" if "already installed" in out else "installed"
+            print(f"  OK       VS Code extension {ext} ({state})")
+        else:
+            last = [l for l in out.strip().splitlines() if l.strip()]
+            print(f"  FAILED   VS Code extension {ext}: {last[-1][:100] if last else 'no output'}")
+            print("           Install it from the Extensions view instead.")
+
+
 def _find_vscode() -> bool:
     """Is VS Code installed?
 
@@ -1357,7 +1418,7 @@ def _find_vscode() -> bool:
     command exists only after running "Shell Command: Install 'code' command in
     PATH", so testing PATH alone reports a false negative on most installs.
     """
-    if shutil.which("code") or shutil.which("code-insiders"):
+    if code_cli():
         return True
     candidates = [
         Path("/Applications/Visual Studio Code.app"),
@@ -1529,6 +1590,9 @@ def cmd_setup(args) -> int:
     # 6. udev (Linux, on the host) ------------------------------------------
     _install_udev(args)
 
+    # 7. VS Code extensions --------------------------------------------------
+    install_extensions()
+
     print()
     if not ok:
         print("Setup finished with problems. See the messages above.")
@@ -1575,6 +1639,12 @@ def cmd_doctor(args) -> int:
     else:
         print(f"  missing  no debug probe attached ({check.state})\n"
               f"           {check.exe} said: {check.said}")
+    cli = code_cli()
+    if cli and not in_container():
+        rc, out = capture([cli, "--list-extensions"])
+        have = {l.strip().lower() for l in out.splitlines()}
+        for ext in recommended_extensions():
+            print(f"  {'OK      ' if ext.lower() in have else 'missing '} VS Code extension {ext}")
 
     if not critical_ok:
         print("\nA build tool is missing. Run:  alr toolchain --select")

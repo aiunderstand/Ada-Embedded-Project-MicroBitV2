@@ -100,6 +100,9 @@ That is the whole installation. It:
 * fetches the drivers submodule if it is missing;
 * sets the two Windows settings this project needs;
 * installs `pyocd` so you can flash and debug over USB (skip with `--no-pyocd`);
+* installs the VS Code extensions this project recommends, among them the
+  **Serial Monitor** that shows your program's output (when it can find the
+  `code` command; otherwise VS Code offers them when you open the folder);
 * finishes by checking everything.
 
 **You do not edit `PATH`, and you do not reboot.** Every build runs through
@@ -176,12 +179,13 @@ the browser instead:
 
 ## 7. Read the output
 
-`Put_Line` writes to the USB serial port at **115200**. In VS Code, install
-the **Serial Monitor** extension from Microsoft (`ms-vscode.vscode-serial-monitor`)
-once: Extensions view, search *Serial Monitor*, Install. Then, in the panel at
-the bottom, open the **Serial Monitor** tab, choose the board's port, set the
-baud rate to **115200**, and click **Start Monitoring**. The port is named
-after the operating system, not the board:
+`Put_Line` writes to the USB serial port at **115200**. Setup installed the
+**Serial Monitor** extension from Microsoft (`ms-vscode.vscode-serial-monitor`);
+if it is not there, VS Code offers it as a recommendation, or install it from
+the Extensions view. In the panel at the bottom, open the **Serial Monitor**
+tab, choose the board's port, set the baud rate to **115200**, and click
+**Start Monitoring**. The port is named after the operating system, not the
+board:
 
 | | |
 |---|---|

@@ -112,6 +112,34 @@ check(setup_problem([V], {V: (1, WINDOWS)}) is None,
 check(setup_problem([V], {V: (1, CRASH)}) is not None, "setup still fails a pyocd that crashes without listing anything")
 check(setup_problem([V], {V: (0, NONE)}) is None, "setup passes a pyocd that runs and sees no board")
 
+# ------------------------------------------------- setup: VS Code extensions
+# setup installs the workspace's recommendations through the "code" command,
+# so Microsoft's Serial Monitor is there before the first program prints.
+real_capture = mb.capture
+recs = mb.recommended_extensions()
+check("ms-vscode.vscode-serial-monitor" in recs and "AIUnderstand.microbit-flasher" in recs,
+      f"the recommendations are read from .vscode/extensions.json, Serial Monitor included (got {recs})")
+check(mb.code_cli() is None or isinstance(mb.code_cli(), str), "code_cli() answers without error")
+def install_run(cli, container=False, outcome=(0, "Installing extensions...\nExtension 'x' is already installed.")):
+    calls = []
+    mb.in_container = lambda: container
+    mb.code_cli = lambda: cli
+    mb.capture = lambda cmd: (calls.append(list(cmd)), outcome)[1]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        mb.install_extensions()
+    return calls, buf.getvalue()
+calls, out = install_run("/usr/bin/code")
+check(calls == [["/usr/bin/code", "--install-extension", e] for e in recs] and out.count("already installed") == len(recs),
+      f"every recommendation is installed through the code command, and a repeat says so (got {calls})")
+calls, out = install_run("/usr/bin/code", outcome=(1, "Failed Installing Extensions: ms-vscode.vscode-serial-monitor\n"))
+check("FAILED" in out and "Extensions view" in out, "a failed install names the extension and the manual route")
+calls, out = install_run(None)
+check(not calls and "skipped" in out and "offers" in out, "without a code command: skipped, and VS Code's own prompt is named")
+calls, out = install_run("/usr/bin/code", container=True)
+check(not calls and not out, "in a Codespace nothing is installed: devcontainer.json does that")
+mb.capture = real_capture
+
 if fail:
     print("FAIL")
     for f in fail:
