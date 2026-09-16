@@ -18,7 +18,8 @@
 //  Desktop VS Code loads this extension as well (it is a workspace
 //  recommendation, so a student on their own PC has it). There the picker
 //  command does not exist, and the board belongs to pyocd: Ctrl+Alt+F runs the
-//  workspace's "Build & Flash" task instead, and the Serial view cannot connect.
+//  workspace's "Build & Flash" task instead, and the Serial view cannot connect;
+//  Microsoft's Serial Monitor extension is the desktop's console.
 
 /* global createUSBConnection, GdbServer */
 
@@ -378,7 +379,7 @@ function desktopAdvice() {
   return (
     "Desktop VS Code cannot open the board over WebUSB; here pyocd flashes it: " +
       "press Ctrl+Shift+B (the Build & Flash task), or run python3 tools/mb.py flash. " +
-      "For serial output use any serial terminal at 115200 baud."
+      "Serial output: Microsoft's Serial Monitor extension, on the board's port at 115200 baud."
   );
 }
 
@@ -791,7 +792,8 @@ function activate(context) {
   if (vscode.env.uiKind !== vscode.UIKind.Web) {
     log(
       `note: this is desktop VS Code, which has no USB picker. Ctrl+Alt+F runs the ` +
-        `"${FLASH_TASK}" task (pyocd) here; the Serial view cannot connect.`
+        `"${FLASH_TASK}" task (pyocd) here; the Serial view cannot connect, ` +
+        `Microsoft's Serial Monitor extension shows the output (115200 baud).`
     );
   } else if (!usbAvailable()) {
     log(

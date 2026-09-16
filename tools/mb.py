@@ -673,8 +673,12 @@ def cmd_flash(args) -> int:
     if check.state != "ok":
         cannot_flash_hint(check)
         return 0
-    return alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
-                     rel(elf)])
+    rc = alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
+                   rel(elf)])
+    if rc == 0:
+        info("serial output: VS Code's Serial Monitor extension (Microsoft), "
+             "the board's port at 115200 baud")
+    return rc
 
 
 def cmd_erase(args) -> int:

@@ -261,7 +261,15 @@ A Codespace has **no USB**. Five consequences:
 3. A **VS Code webview cannot do this**: webview iframes are not granted
    `allow="usb"`. Rendering-only integrations work in a webview; device access
    does not. The serial console *is* a webview view — the extension holds the
-   device and the view only shows and asks.
+   device and the view only shows and asks. On a desktop nothing can hold
+   the device, so the output is read with Microsoft's **Serial Monitor**
+   extension on DAPLink's serial port (`setup/local.md`, step 7). It is a
+   desktop-only extension and the recommendations list is one for every
+   path, so it is documented rather than recommended; the flasher's own
+   messages point at it. An `mb.py serial` monitor of our own (pyserial,
+   auto-detected port, opened by the desktop Ctrl+Alt+F) was written and
+   set aside on branch `desktop-serial-monitor`, in case "which COM port?"
+   turns out to be a support burden.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
    Never listed in `devcontainer.json`, which installs into the container.

@@ -176,13 +176,24 @@ the browser instead:
 
 ## 7. Read the output
 
-`Put_Line` writes to the USB serial port at **115200**. Either:
+`Put_Line` writes to the USB serial port at **115200**. In VS Code, install
+the **Serial Monitor** extension from Microsoft (`ms-vscode.vscode-serial-monitor`)
+once: Extensions view, search *Serial Monitor*, Install. Then, in the panel at
+the bottom, open the **Serial Monitor** tab, choose the board's port, set the
+baud rate to **115200**, and click **Start Monitoring**. The port is named
+after the operating system, not the board:
 
-* the **serial console** of the [browser flasher](https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/)
-  (Chrome, Edge or Opera), or
-* any serial terminal you already like, at 115200 baud.
+| | |
+|---|---|
+| Windows | `COM3`, `COM4`… — the *USB Serial Device* that appears when you plug the board in |
+| macOS | `/dev/cu.usbmodem…` |
+| Linux | `/dev/ttyACM0` (the udev rule from step 6 makes it readable) |
 
-Only one program can hold the port at a time.
+Keep it monitoring: the port survives flashing, so Ctrl+Shift+B keeps working
+next to it. Only one program can hold the port at a time, so close any other
+serial terminal first. Without VS Code, the **serial console** of the
+[browser flasher](https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/)
+(Chrome, Edge or Opera) or any serial terminal at 115200 baud does the same.
 
 ## 8. Debug with breakpoints
 
@@ -306,7 +317,7 @@ extension, which is for the browser, running in desktop VS Code — it is a
 workspace recommendation, so it gets installed on your own machine too. Newer
 versions run the *Build & Flash* task (pyocd) there instead, the same as
 Ctrl+Shift+B: update it in the Extensions view. Its Serial view cannot connect
-on a desktop; use a serial terminal at 115200 baud.
+on a desktop; the output is in Microsoft's Serial Monitor extension (step 7).
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.
