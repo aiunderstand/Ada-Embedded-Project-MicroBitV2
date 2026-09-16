@@ -140,6 +140,42 @@ calls, out = install_run("/usr/bin/code", container=True)
 check(not calls and not out, "in a Codespace nothing is installed: devcontainer.json does that")
 mb.capture = real_capture
 
+# ------------------------------------------------- the linker script on Windows
+# gprbuild hands ld the runtime's ld directory relative to the object
+# directory; Windows appends that to the current directory and refuses the
+# result past 260 characters before collapsing the "..". mb.py adds the
+# directory as an absolute -L, in front, so the script is opened by full name.
+import tempfile
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    (root / "embedded-nrf52833" / "ld").mkdir(parents=True)
+    gpr = root / "default.gpr"
+    gpr.write_text('project Default is\n   for Runtime ("ada") use "embedded-nrf52833";\nend Default;\n')
+    zfp = root / "zfp.gpr"
+    zfp.write_text('project Zfp is\n   for Runtime ("Ada") use MicroBit_v2_ZFP\'Runtime ("Ada");\nend Zfp;\n')
+    mb._runtime_root = None
+    # The compiler answers with ".." in it, after Alire's chatter; here it normalises to root.
+    mb.capture = lambda cmd: (0, f"Note: Synchronizing workspace...\n{root}/x/../\n") if cmd[-1] == "-print-file-name=gnat" else (1, "")
+    got = mb.linker_script_switches(gpr)
+    check(got == ["-largs", f"-L{root / 'embedded-nrf52833' / 'ld'}"],
+          f"a project naming its runtime gets that runtime's ld directory as an absolute -L (got {got})")
+    check(mb.linker_script_switches(zfp) == [],
+          "a project that takes its runtime from another project gets nothing: the light runtime has no -T")
+    mb._runtime_root = None
+    mb.capture = lambda cmd: (1, "alr: command not found")
+    check(mb.linker_script_switches(gpr) == [], "no compiler answer, no switch: the build then fails on its own terms")
+    mb._runtime_root = None
+    mb.capture = real_capture
+    calls = []
+    mb.run = lambda cmd, quiet=False: (calls.append(list(cmd)), 0)[1]
+    mb.linker_script_switches = lambda g: ["-largs", "-L/rt/ld"]
+    mb.build_one("template", mb.TEMPLATE_GPR)
+    mb.build_one("ravenscar/x", gpr)
+    check(all(c[-4:] == ["-cargs:ada", "-gnatef", "-largs", "-L/rt/ld"] for c in calls) and len(calls) == 2,
+          f"template and examples end with the same compiler switches and the absolute -L (got {calls})")
+    check(calls[0][:3] == ["alr", "build", "--"] and calls[1][:4] == ["alr", "exec", "--", "gprbuild"],
+          "the template still builds through alr build, the examples through gprbuild")
+
 if fail:
     print("FAIL")
     for f in fail:

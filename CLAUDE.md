@@ -99,6 +99,20 @@ Codespaces and CI. Caught by the CI matrix on its first run.
 171-character paths. Without `git config --global core.longpaths true` the clone
 truncates and looks like a corrupt download.
 
+**Windows resolves a relative path against the current directory before it
+collapses the `..`, and refuses the result past 260 characters.** On Windows
+gprbuild hands ld the runtime's linker-script directory *relative* to the
+object directory (`-L..\..\..\..\..\..\..\..\..\..\..\appdata\...\ld\`, then
+`-T common-ROM.ld`); with the build tree relocated under `build/obj` an
+example's object directory is 116 characters from `C:\Users\huber\itrs26`,
+eleven levels below the runtime, and the concatenation is 269. So
+`ravenscar/motor_drive_dfr0548` failed with *cannot open linker script file
+common-ROM.ld* while the template, five levels up and 171 long, linked --
+on the same PC, the same runtime, the same script. `mb.py` now adds the
+runtime's `ld` directory as an absolute `-L` ahead of the runtime's own, so
+ld opens the script by its full name, which is never concatenated. The
+matrix job builds the deepest example on every OS to keep it that way.
+
 **Windows on ARM is unsupported.** Alire publishes no ARM64 Windows build, and
 the x64 one crashes on startup (`0xC0000005`). `mb.py setup` detects and says so.
 

@@ -388,6 +388,57 @@ def capture(cmd: list[str]) -> tuple[int, str]:
 # --------------------------------------------------------------------------
 
 RELOCATE = ["--root-dir=.", f"--relocate-build-tree=build/obj"]
+# Full paths in compiler messages, so the Problems panel can open the file;
+# the template gets them too now, not only the examples.
+CARGS = ["-cargs:ada", "-gnatef"]
+
+_runtime_root: str | None = None
+
+
+def runtime_root() -> str | None:
+    """Where the compiler keeps its runtimes: <toolchain>/arm-eabi/lib/gnat."""
+    global _runtime_root
+    if _runtime_root is None:
+        rc, out = capture(["alr", "exec", "--", "arm-eabi-gcc", "-print-file-name=gnat"])
+        # Alire chatter precedes the answer; the answer is the last path.
+        paths = [l.strip() for l in out.splitlines() if os.path.sep in l or "/" in l]
+        _runtime_root = os.path.normpath(paths[-1]) if rc == 0 and paths else ""
+    return _runtime_root or None
+
+
+def runtime_named(gpr: Path) -> str | None:
+    """The runtime a project names literally: for Runtime ("ada") use "...";"""
+    try:
+        m = re.search(r'for\s+Runtime\s*\(\s*"ada"\s*\)\s+use\s+"([^"]+)"',
+                      gpr.read_text(errors="replace"), re.I)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
+def linker_script_switches(gpr: Path) -> list[str]:
+    """-largs -L<runtime>/ld: the linker script's directory, as an absolute path.
+
+    The runtime's own switches say the same ("-L${RUNTIME_DIR}/ld", then
+    "-T common-ROM.ld"), but on Windows gprbuild hands ld that directory
+    relative to the object directory, and Windows resolves a relative name
+    by appending it to the current directory and refusing the result when
+    that exceeds 260 characters -- before it collapses the "..". With the
+    build tree relocated under build/obj, an example's object directory is
+    already 116 characters from C:/Users/huber/itrs26, the runtime lies
+    eleven ".." up, and the concatenation is 269: "cannot open linker
+    script file common-ROM.ld", while the template, 5 levels up and 171
+    long, links. An absolute -L before the runtime's makes ld open the
+    script by its full name, which is never concatenated.
+    """
+    name = runtime_named(gpr)
+    root = runtime_root()
+    if not name or not root:
+        return []
+    ld_dir = Path(root) / name / "ld"
+    if not ld_dir.is_dir():
+        return []
+    return ["-largs", f"-L{ld_dir}"]
 
 
 def built_exe(gpr: Path) -> Path:
@@ -403,7 +454,8 @@ def build_one(pid: str, gpr: Path, quiet: bool = False, verbose: bool = False) -
         cmd = ["alr", "build", "--"] + (["-v"] if verbose else []) + RELOCATE
     else:
         cmd = ["alr", "exec", "--", "gprbuild", "-j0", "-p", "-P", rel(gpr)] + \
-              (["-v"] if verbose else []) + RELOCATE + ["-cargs:ada", "-gnatef"]
+              (["-v"] if verbose else []) + RELOCATE
+    cmd += CARGS + linker_script_switches(gpr)
     if quiet:
         rc, out = capture(cmd)
         if rc != 0:

@@ -130,6 +130,13 @@ jobs:
         shell: bash
         run: python3 tools/mb.py build
 
+      # The deepest example. On Windows its relocated object directory plus
+      # the runtime's relative -L exceeded 260 characters, and ld could not
+      # open common-ROM.ld; mb.py now passes that directory absolutely.
+      - name: Build the deepest example
+        shell: bash
+        run: python3 tools/mb.py build --use ravenscar/microbit-with-game-engine-unity/MicroBitV2/Wireless/WirelessRadioController
+
       # On Windows this is the real thing: a captured child's stdout is
       # cp1252 unless mb.py puts it in UTF-8 mode, and pyocd's check mark
       # then kills "pyocd list" after it has printed the board.

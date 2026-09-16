@@ -325,3 +325,9 @@ on a desktop; the output is in Microsoft's Serial Monitor extension (step 7).
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.
+
+**Windows: `cannot open linker script file common-ROM.ld` when building an
+example.** An old version of the tools; `git pull`. The linker was given the
+runtime's directory as a path relative to a deep build folder, which Windows
+refuses past 260 characters. The template linked because its folder is
+shallower.
