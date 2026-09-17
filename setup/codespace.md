@@ -84,8 +84,9 @@ in its search box, and click **Install** on *micro:bit v2 Flasher*.
 Then, every time:
 
 1. Plug the micro:bit in with a **data** USB cable — some cables only carry power.
-2. Click **Flash micro:bit** in the status bar, at the bottom of the window.
-   (Or press **Ctrl+Alt+F** — on a Mac that is **Control+Option+F**, not Command.)
+2. Press **Ctrl+Shift+B** (**Cmd+Shift+B** on a Mac), or click **Flash
+   micro:bit** in the status bar at the bottom of the window. The same key
+   builds and flashes on your own machine too.
 3. The first time only, your browser asks which device to use — choose the
    micro:bit.
 
@@ -98,7 +99,7 @@ USB connection. Type a line in the field at the bottom and press **Enter** (or
 **Send**) to send it to your program — `MicroBit.Console.Get` receives it one
 character at a time, ending in CR LF, the same line ending `Put_Line` writes.
 **Clear** empties the view. Its header has three buttons: **plug** connects
-to the board, **⚡** builds and flashes (the same as Ctrl+Alt+F), and, once
+to the board, **⚡** builds and flashes (the same as Ctrl+Shift+B), and, once
 connected, **disconnect** lets go of the board — do that before using the
 board from another program or tab. Closed the view? Run `micro:bit: Open
 serial console` from the command palette.
@@ -123,7 +124,7 @@ The drivers library ships 46 example programs. At the bottom-left of the
 window, next to **Flash micro:bit**, the status bar shows which project the
 flasher builds — `template` to begin with. **Click it**, pick an example (say
 `ravenscar/buttons`), and it is built and remembered: from then on
-**Ctrl+Alt+F** builds and flashes that example, and the message after the
+**Ctrl+Shift+B** builds and flashes that example, and the message after the
 flash names it. Click again and choose **template** to go back to your own
 program. (The same picker is `micro:bit: Choose project to build and flash`
 in the command palette.)
@@ -132,7 +133,7 @@ in the command palette.)
 
 Set a breakpoint in `main.adb` and press **F5**: it builds, flashes, and stops
 on that line so you can step through and inspect variables. The first time, the
-browser asks which USB device to use — choose the micro:bit, as for Ctrl+Alt+F;
+browser asks which USB device to use — choose the micro:bit, as for Ctrl+Shift+B;
 after that the board is remembered.
 
 Full guide, both paths and troubleshooting: **[Debug with
@@ -182,15 +183,15 @@ Restricted Mode, which disables the build tasks.
 and use Chrome, Edge or Opera. On Linux see the note on the flasher page about
 the udev rule.
 
-**The flasher shows "Activating…" forever, or Ctrl+Alt+F says
-`command 'microbit.flash' not found`.** The extension ended up installed *in the
+**The flasher shows "Activating…" forever, or Ctrl+Shift+B runs the *Build &
+Flash* task and says there is no USB access.** The extension ended up installed *in the
 Codespace* instead of in your browser, and there it can never start — a
 long-standing VS Code limitation, not something you did. In the Extensions
 view, find *micro:bit v2 Flasher*; if it says it is installed in the Codespace,
 uninstall it there and use **Install in Browser** instead.
 
 **The first flash says "Must be handling a user gesture".** The browser shows
-the USB picker only right after your keypress. Press Ctrl+Alt+F again; the
+the USB picker only right after your keypress. Press Ctrl+Shift+B again; the
 board is asked for first, before the build, and once chosen it is remembered.
 
 **Flash micro:bit never appears after installing.** Use Chrome, Edge or Opera —

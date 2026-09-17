@@ -111,7 +111,7 @@ Flasher** → **Install**. *Show Running Extensions* (command palette) should li
 it under **web worker** with an activation time, and **Flash micro:bit** should
 be in the status bar. If it shows *Activating…* forever, it was installed into
 the Codespace — uninstall it there and install again from the search box. Then
-plug in a board, **Ctrl+Alt+F** to flash, and F5 to check debugging end to end.
+plug in a board, **Ctrl+Shift+B** to flash, and F5 to check debugging end to end.
 
 ## Why nothing else delivers it
 

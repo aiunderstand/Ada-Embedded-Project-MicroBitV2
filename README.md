@@ -44,6 +44,22 @@ There are ready-built examples in the picker, so you can flash `music` or
 **Flash from here (serve flasher)** task and open the forwarded port — the page
 is then served from your Codespace with your own build already loaded.
 
+## The keys, on both paths
+
+The same keys do the same things on your own machine and in a Codespace:
+
+| Key | Does | On your machine | In a Codespace |
+|---|---|---|---|
+| **Ctrl+Shift+B** (Cmd+Shift+B on a Mac) | Build and flash | pyocd, over USB | the micro:bit flasher in your browser; the first time it asks which board |
+| **F5** | Build, flash, and debug with breakpoints | pyocd | the flasher, through the companion |
+| **Shift+F5** | Stop debugging | | |
+| **Ctrl+Shift+P** → *Tasks: Run Task* | *Choose project…*, *Build*, *Prove (SPARK)*, *Erase*, *Doctor* | | |
+| status bar, bottom left | **Flash micro:bit** (same as Ctrl+Shift+B) and the chosen project (click to change) | | |
+
+Serial output (`Put_Line`, 115200 baud): on your machine, the **Serial
+Monitor** extension's tab in the panel; in a Codespace, the **micro:bit ›
+Serial** view, which also sends what you type.
+
 ## Debug with breakpoints
 
 Set a breakpoint in `main.adb`, press **F5**, and step through your program on

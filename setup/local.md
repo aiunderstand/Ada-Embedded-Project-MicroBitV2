@@ -315,7 +315,7 @@ sudo snap connect chromium:raw-usb
 Installing Chrome from its `.deb` avoids this entirely. Firefox has no WebUSB
 at all, and the page says so rather than failing to connect.
 
-**Ctrl+Alt+F or "Flash micro:bit" fails with `command
+**"Flash micro:bit" fails with `command
 'workbench.experimental.requestUsbDevice' not found`.** That is the flasher
 extension, which is for the browser, running in desktop VS Code — it is a
 workspace recommendation, so it gets installed on your own machine too. Newer

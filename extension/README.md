@@ -3,8 +3,9 @@
 Build your program and flash it to a BBC micro:bit v2 over WebUSB, from inside
 VS Code — including a **GitHub Codespace**, which has no USB port of its own.
 
-One key does the whole job: **Ctrl+Alt+F** (Control+Option+F on a Mac), or the
-**Flash micro:bit** button in the status bar. It runs the workspace **Build**
+One key does the whole job: **Ctrl+Shift+B** (Cmd+Shift+B on a Mac), the same
+key that builds and flashes on your own machine, or the **Flash micro:bit**
+button in the status bar. It runs the workspace **Build**
 task, then flashes `build/main.hex`. The first time, the browser asks which USB
 device to use — choose the micro:bit. Then the **micro:bit › Serial** view
 opens in the bottom panel: your program's output over the same USB connection,
@@ -22,7 +23,7 @@ runs in the Codespace, where the program's symbols are; the companion
 extension there opens a port for it and forwards every gdb packet to this
 extension, which answers over the board's USB connection: halting, stepping,
 registers, memory, six hardware breakpoints, and gdb's `load`, which flashes.
-The first time, F5 asks which USB device to use, just as Ctrl+Alt+F does; after
+The first time, F5 asks which USB device to use, just as Ctrl+Shift+B does; after
 that the board is remembered. The `micro:bit: (internal) gdb …` commands are
 the companion's end of that conversation, not for people.
 
@@ -35,7 +36,7 @@ browser (or vscode.dev / github.dev); if VS Code offers a choice, pick *Install
 in Browser*. Installed *into* the Codespace it can never start.
 
 It needs a Chromium browser — Chrome, Edge or Opera. Safari and Firefox have no
-WebUSB. Desktop VS Code has no USB picker, so there **Ctrl+Alt+F** runs the
+WebUSB. Desktop VS Code has no USB picker, so there the **Flash micro:bit** button runs the
 workspace's **Build & Flash** task instead, which flashes with pyocd (the course
 template's `python3 tools/mb.py flash`); the Serial view cannot connect there,
 so the output is read with Microsoft's Serial Monitor extension at 115200 baud.
@@ -44,7 +45,7 @@ so the output is read with Microsoft's Serial Monitor extension at 115200 baud.
 
 | Command | |
 |---|---|
-| `micro:bit: Build and flash` | **Ctrl+Alt+F** — build, then flash `build/main.hex` |
+| `micro:bit: Build and flash` | **Ctrl+Shift+B** in the browser — build, then flash `build/main.hex` |
 | `micro:bit: Connect board` | authorise the board and open the Serial view |
 | `micro:bit: Disconnect board` | let go of the board, e.g. before another tab uses it |
 | `micro:bit: Open serial console` | the Serial view: output, an input field, Send, Clear |

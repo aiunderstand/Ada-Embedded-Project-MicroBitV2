@@ -94,7 +94,9 @@
     "keybindings": [
       {
         "command": "microbit.flash",
-        "key": "ctrl+alt+f"
+        "key": "ctrl+shift+b",
+        "mac": "shift+cmd+b",
+        "when": "microbit.usbHost"
       }
     ],
     "viewsContainers": {
@@ -119,11 +121,26 @@
     },
     "menus": {
       "commandPalette": [
-        { "command": "microbit.gdb.attach", "when": "false" },
-        { "command": "microbit.gdb.packet", "when": "false" },
-        { "command": "microbit.gdb.interrupt", "when": "false" },
-        { "command": "microbit.gdb.detach", "when": "false" },
-        { "command": "microbit.gdb.ping", "when": "false" }
+        {
+          "command": "microbit.gdb.attach",
+          "when": "false"
+        },
+        {
+          "command": "microbit.gdb.packet",
+          "when": "false"
+        },
+        {
+          "command": "microbit.gdb.interrupt",
+          "when": "false"
+        },
+        {
+          "command": "microbit.gdb.detach",
+          "when": "false"
+        },
+        {
+          "command": "microbit.gdb.ping",
+          "when": "false"
+        }
       ],
       "view/title": [
         {

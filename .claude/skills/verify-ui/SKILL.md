@@ -85,6 +85,16 @@ npx @vscode/test-web --browser none --quality stable --port 3000 \
     --extensionDevelopmentPath "$SP/ext" <a small folder with .vscode/tasks.json and build/main.hex>
 ```
 
+`chord.js`, next to this file, is the chord check for test-web: it waits
+for the status bar to show **Flash micro:bit**, presses the chord (argument;
+`none` for a control run), opens the **micro:bit** output channel through the
+*Show connection status* command and reads the log. "Asking you to choose
+the micro:bit" appears only when the flash command ran, so that line after
+Cmd+Shift+B, and not in the control run, is the proof that the flasher took
+the build chord in the browser (`when: microbit.usbHost`). It needs real
+Chrome (`channel: "chrome"`): headless Chromium has no `navigator.usb`, the
+context stays false, and the chord falls through to the build task.
+
 **serve-web — a real VS Code Server as the remote, the way a Codespace is.**
 It has no development-extension option, so install into the server with the
 remote CLI from the integrated terminal (`code --install-extension`) — knowing

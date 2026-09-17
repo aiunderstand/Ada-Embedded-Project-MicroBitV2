@@ -242,7 +242,11 @@ extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
 as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
 as you typed it finds nothing. Read the real tables out of a running VS Code:
 `Preferences: Open Default Keyboard Shortcuts (JSON)`, or the `verify-ui` skill's
-test-web recipe with a spoofed user agent for Windows and Linux.
+test-web recipe with a spoofed user agent for Windows and Linux. The flasher's
+chord is now `ctrl+shift+b`, VS Code's own build chord, on purpose: it shadows
+the default only under `when: microbit.usbHost` (the browser), so one key
+builds and flashes on both paths; `tools/test_extension.mjs` allows a default
+chord only with that clause.
 
 **Never install the extension into the Codespace, and only the Marketplace can
 deliver it.** Installed into the Codespace, it cannot run in the browser client:
@@ -265,8 +269,9 @@ answers `getDevices()` with nothing, so "is there WebUSB" said yes -- and the
 next call, `workbench.experimental.requestUsbDevice`, is registered by the
 browser workbench only: `command ... not found`, on a Windows PC with the board
 plugged in and pyocd working. `uiKind` is the test, not `navigator.usb`; on the
-desktop Ctrl+Alt+F runs the *Build & Flash* task instead, so the key does the
-same job on every path. `tools/test_extension.mjs` loads the bundle as that
+desktop the flash runs the *Build & Flash* task instead. The chord is
+Ctrl+Shift+B on every path: VS Code's build chord runs that task on a desktop,
+and in the browser the flasher takes it over under `when: microbit.usbHost`. `tools/test_extension.mjs` loads the bundle as that
 worker, `uiKind` Desktop and `navigator.usb` present.
 
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
@@ -298,7 +303,7 @@ A Codespace has **no USB**. Five consequences:
    -- and `mb.py setup` installs every recommendation through the `code`
    command on a desktop, so it is there before the first program prints;
    `doctor` lists which are installed. An `mb.py serial` monitor of our own (pyserial,
-   auto-detected port, opened by the desktop Ctrl+Alt+F) was written and
+   auto-detected port, opened by the desktop flash) was written and
    set aside on branch `desktop-serial-monitor`, in case "which COM port?"
    turns out to be a support burden.
 
@@ -345,7 +350,7 @@ A Codespace has **no USB**. Five consequences:
    itself is one: the flasher registers a `DebugConfigurationProvider` for
    `cortex-debug` and asks for the device in `resolveDebugConfiguration`,
    which VS Code runs before the build, inside the gesture window -- the same
-   trick as Ctrl+Alt+F. The attach's own error remains for when that did not
+   trick as Ctrl+Shift+B in the browser. The attach's own error remains for when that did not
    happen (picker dismissed, flasher not yet active).
    The relay detaches the browser *before* it drains its packet queue: a
    pending `continue` ends only when the server detaches, so the other order

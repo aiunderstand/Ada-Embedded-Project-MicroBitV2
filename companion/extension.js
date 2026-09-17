@@ -49,7 +49,7 @@ async function ensureFlasher(context, { force = false } = {}) {
     await vscode.commands.executeCommand("workbench.extensions.installExtension", FLASHER);
     await context.globalState.update(DONE_KEY, true);
     vscode.window.showInformationMessage(
-      "micro:bit flasher installed in your browser. Plug the board in and press Ctrl+Alt+F to build and flash."
+      "micro:bit flasher installed in your browser. Plug the board in and press Ctrl+Shift+B to build and flash."
     );
     return "installed";
   } catch (err) {

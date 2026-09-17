@@ -450,7 +450,7 @@ class GdbServer {
   //
   // gdb's `load` arrives as vFlashErase / vFlashWrite / vFlashDone because the
   // memory map marks flash. The writes are collected and handed to the
-  // library's full flash as Intel HEX -- the same routine Ctrl+Alt+F uses, so
+  // library's full flash as Intel HEX -- the same routine the flash uses, so
   // there is one way of programming the board, not two.
 
   async flashDone() {

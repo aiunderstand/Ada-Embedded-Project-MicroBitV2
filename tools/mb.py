@@ -507,7 +507,7 @@ def chosen_project(args) -> tuple[str, Path]:
     """The project to build: chosen now, or chosen earlier, or the template.
 
     --use / --use-dir choose a project and remember it in build/project.txt.
-    A plain build -- which is what Ctrl+Alt+F and "Build & Flash" run -- then
+    A plain build -- which is what "Build & Flash" and the flasher run -- then
     rebuilds that choice, so a student can pick an example once and flash it
     with the same key as their own program. Choosing "template" returns.
     """
@@ -706,8 +706,9 @@ def cannot_flash_hint(check: ProbeCheck) -> None:
         return
     if in_container():
         print("\nmb: built fine, but there is no USB access in a Codespace.\n"
-              "    Press Ctrl+Alt+F (the micro:bit flasher extension), which builds "
-              "and flashes.\n"
+              "    Ctrl+Shift+B flashes through the micro:bit flasher extension in your\n"
+              "    browser; if it ran this task instead, the extension is not installed\n"
+              "    there: Extensions view, AIUnderstand.microbit-flasher, Install.\n"
               + browser)
         return
     print("\nmb: built fine, but no micro:bit is visible.\n"

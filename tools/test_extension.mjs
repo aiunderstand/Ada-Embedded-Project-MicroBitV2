@@ -41,11 +41,20 @@ check(JSON.parse(fs.readFileSync(path.join(forced, "package.json"), "utf8")).ver
       "--version must override the version, so CI can publish a monotonic one");
 fs.rmSync(forced, { recursive: true, force: true });
 
-check((pkg.contributes.keybindings || []).some((k) => k.command === "microbit.flash"),
-      "flash must have a keybinding, so it needs no command palette");
-// A chord VS Code already uses is a regression, not a feature: the first pick,
-// cmd+alt+f, was Replace on a Mac. VS Code writes modifiers as ctrl, shift,
-// alt, cmd; both spellings are listed so a manifest typo cannot slip past.
+// One key on every path: the flash is bound to VS Code's own build chord,
+// Ctrl+Shift+B, and takes it over only in the browser (when microbit.usbHost);
+// on a desktop the chord falls through to the Build & Flash task.
+const flashKey = (pkg.contributes.keybindings || []).find((k) => k.command === "microbit.flash");
+check(flashKey && flashKey.key === "ctrl+shift+b" && flashKey.mac === "shift+cmd+b",
+      "flash is bound to the build chord, spelled per platform as VS Code spells it");
+check(flashKey && flashKey.when === "microbit.usbHost",
+      "and only under the browser context, or a desktop would lose its build task");
+check(!(pkg.contributes.keybindings || []).some((k) => /alt\+f/i.test(k.key || "")),
+      "the old chord is gone from the manifest");
+// A chord VS Code already uses is a regression unless it is shadowed under a
+// context on purpose: the first pick, cmd+alt+f, was Replace on a Mac. VS Code
+// writes modifiers as ctrl, shift, alt, cmd; both spellings are listed so a
+// manifest typo cannot slip past.
 const TAKEN = new Set([
   "cmd+alt+f", "alt+cmd+f",        // Replace (mac)
   "ctrl+h",                        // Replace (win/linux)
@@ -54,6 +63,7 @@ const TAKEN = new Set([
   "ctrl+f", "cmd+f", "alt+f", "f1", "f5",
 ]);
 for (const kb of pkg.contributes.keybindings || []) {
+  if (kb.when) continue; // shadowing a default under a context is the point
   for (const chord of [kb.key, kb.mac, kb.win, kb.linux].filter(Boolean)) {
     check(!TAKEN.has(chord.toLowerCase()),
           `keybinding "${chord}" is a VS Code default on some platform`);
@@ -66,6 +76,7 @@ check(src.includes("globalThis.createUSBConnection"),
       "the library must be bundled and exposed as a global");
 check(!/^\s*export[\s{]/m.test(src),
       "no ESM export may survive: the web extension host loads a classic script");
+check(!src.includes("Ctrl+Alt+F"), "the old chord is gone from every message in the bundle");
 check(src.includes("workbench.experimental.requestUsbDevice"),
       "device authorisation must go through the VS Code command");
 check(src.includes("partial: false"),
@@ -267,7 +278,7 @@ const fakeDevice = (opened) => ({
   close: async () => {}, addEventListener() {}, removeEventListener() {},
 });
 async function runFlash({ authorised }) {
-  const reached = [], errors = [], commands = [];
+  const reached = [], errors = [], commands = [], contexts = {};
   let handler;
   const vs = {
     ...vscode,
@@ -279,7 +290,10 @@ async function runFlash({ authorised }) {
               registerWebviewViewProvider: () => ({ dispose() {} }) },
     commands: {
       registerCommand: (id, fn) => { if (id === "microbit.flash") handler = fn; return { dispose() {} }; },
-      executeCommand: async (id) => { commands.push(id); authorised = true; },
+      executeCommand: async (id, ...args) => {
+        if (id === "setContext") { contexts[args[0]] = args[1]; return; }
+        commands.push(id); authorised = true;
+      },
     },
     workspace: { workspaceFolders: [{ uri: {} }],
                  fs: { stat: async () => ({}), readFile: async () => new TextEncoder().encode(":10000000783A0020091E0100541E0100541E010010\n:00000001FF\n") } },
@@ -291,7 +305,7 @@ async function runFlash({ authorised }) {
     (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
   m.exports.activate({ subscriptions: [] });
   await handler();
-  return { reached: reached.length, errors, commands };
+  return { reached: reached.length, errors, commands, contexts };
 }
 // activate() also reconnects to an authorised device on its own, so the device
 // is opened twice here: once at activation, once by the flash.
@@ -307,6 +321,8 @@ const withoutDevice = await runFlash({ authorised: false });
 check(withoutDevice.commands.includes("workbench.experimental.requestUsbDevice"),
       "with no authorised device, the workbench picker must be used");
 check(withoutDevice.reached >= 1, "the device the picker authorised must then be used");
+check(withDevice.contexts["microbit.usbHost"] === true,
+      "in a browser with WebUSB the flasher claims the build chord (microbit.usbHost)");
 
 // ------------------------------------------------------------ desktop VS Code
 // Desktop VS Code loads web extensions too (this one is a workspace
@@ -315,7 +331,7 @@ check(withoutDevice.reached >= 1, "the device the picker authorised must then be
 // So "is there WebUSB" said yes on a Windows PC, and the next call was to the
 // workbench's device picker, which only the browser build registers:
 //   Error: command 'workbench.experimental.requestUsbDevice' not found
-// There the board belongs to pyocd: Ctrl+Alt+F runs the Build & Flash task.
+// There the board belongs to pyocd: the flash runs the Build & Flash task.
 async function runDesktop({ command = "microbit.flash", tasks = ["Build & Flash", "Build"], exitCode = 0, remoteName } = {}) {
   const commands = [], errors = [], listeners = [], handlersHere = {};
   const vs = {
@@ -353,8 +369,10 @@ async function runDesktop({ command = "microbit.flash", tasks = ["Build & Flash"
   return { commands, errors };
 }
 const desktopFlash = await runDesktop();
+check(desktopFlash.commands.includes("setContext microbit.usbHost false"),
+      "on a desktop it does not claim the chord: Ctrl+Shift+B stays the Build & Flash task");
 check(desktopFlash.commands.includes("workbench.action.tasks.runTask Build & Flash"),
-      "on the desktop Ctrl+Alt+F runs the Build & Flash task: pyocd has the board there");
+      "on the desktop the flash runs the Build & Flash task: pyocd has the board there");
 check(!desktopFlash.commands.some((c) => /requestUsbDevice/.test(c)) && !desktopFlash.errors.length,
       `on the desktop the workbench picker must never be asked for, it does not exist there (got: ${desktopFlash.errors})`);
 const desktopFailed = await runDesktop({ exitCode: 1 });
@@ -365,7 +383,7 @@ check(!desktopNoTask.commands.some((c) => /runTask|requestUsbDevice/.test(c)) &&
       "outside the template, with no Build & Flash task, the desktop is told to use mb.py flash");
 const desktopRemote = await runDesktop({ remoteName: "codespaces" });
 check(!desktopRemote.commands.some((c) => /runTask|requestUsbDevice/.test(c)) && desktopRemote.errors.some((e) => /browser/.test(e)),
-      "desktop VS Code attached to a Codespace: the task would answer 'press Ctrl+Alt+F'; say to open the Codespace in the browser instead");
+      "desktop VS Code attached to a Codespace: the task would answer 'press Ctrl+Shift+B'; say to open the Codespace in the browser instead");
 const desktopConnect = await runDesktop({ command: "microbit.connect" });
 check(!desktopConnect.commands.some((c) => /requestUsbDevice/.test(c)) && desktopConnect.errors.some((e) => /mb\.py flash/.test(e)),
       "Connect on the desktop explains itself instead of asking for a picker that is not there");
@@ -393,7 +411,7 @@ mod.exports._debug.setSession({ running: false, detach: async () => { detached++
 const shown = [];
 vscode.window.showErrorMessage = (m) => { shown.push(m); };
 await handlers["microbit.flash"]();
-check(shown.some((m) => /Stop it first/.test(m)), "Ctrl+Alt+F during a debug session is refused, with the way out");
+check(shown.some((m) => /Stop it first/.test(m)), "a flash during a debug session is refused, with the way out");
 await handlers["microbit.disconnect"]();
 check(detached === 1, "Disconnect ends the debug session first");
 try { await handlers["microbit.gdb.packet"]("?"); check(false, "the session must be gone after Disconnect"); }
@@ -440,7 +458,7 @@ check(!authorisedRun.commands.includes("workbench.experimental.requestUsbDevice"
 // ------------------------------------------------------ F5 asks for the board
 // The attach cannot show the picker (no gesture reaches it), but F5 is a
 // gesture and VS Code resolves the debug configuration before it builds: a
-// provider in the browser asks for the board right there, as Ctrl+Alt+F does.
+// provider in the browser asks for the board right there, as Ctrl+Shift+B does.
 check(debugProviders["cortex-debug"] && typeof debugProviders["cortex-debug"].resolveDebugConfiguration === "function",
       "the flasher registers a debug-configuration provider for cortex-debug");
 check((pkg.activationEvents || []).includes("onDebugResolve:cortex-debug"),
@@ -561,7 +579,7 @@ check(fresh.executed.includes("workbench.extensions.installExtension AIUnderstan
       "in the browser, with no flasher, the companion asks the workbench to install it");
 check(fresh.result === "installed" && fresh.state["microbit.flasherInstalled"] === true,
       "a successful install is remembered, so it is not repeated on every attach");
-check(fresh.messages.some((m) => /Ctrl\+Alt\+F/.test(m)), "and the student is told what to do next");
+check(fresh.messages.some((m) => /Ctrl\+Shift\+B/.test(m)), "and the student is told what to do next");
 const already = await runCompanion({ uiKind: 2, present: true });
 check(already.result === "present" && !already.executed.some((e) => /installExtension/.test(e)),
       "with the flasher present, nothing is installed");
