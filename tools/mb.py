@@ -172,6 +172,15 @@ def _search(dirs, stem: str) -> str | None:
     return None
 
 
+def _spelled_path(exe: str) -> bool:
+    """Whether a command already names a path, in either slash style.
+
+    Windows accepts "/" as a separator too, and some tests spell fake paths
+    that way; checking only os.path.sep misreads them as a bare command name.
+    """
+    return "/" in exe or "\\" in exe
+
+
 def _alr_dirs() -> list[Path]:
     """Everywhere alr is normally installed, ours first.
 
@@ -219,7 +228,7 @@ def alr_path() -> str:
 def remember_alr() -> None:
     """Record the resolved alr, so a task without PATH finds the same one."""
     found = alr_path()
-    if os.path.sep not in found:            # bare name: nothing worth recording
+    if not _spelled_path(found):            # bare name: nothing worth recording
         return
     try:
         MANAGED_DIR.mkdir(parents=True, exist_ok=True)
@@ -1479,7 +1488,7 @@ def _pyocd_problem() -> str | None:
     case worth catching at setup time rather than at flash time.
     """
     exe = pyocd_path()
-    if os.path.sep not in exe:
+    if not _spelled_path(exe):
         return "not installed"
     rc, out = capture([exe, "--version"])
     if rc != 0:
@@ -1797,7 +1806,7 @@ def cmd_setup(args) -> int:
     if not args.no_pyocd:
         # Ours, with pyserial next to it for the Serial view's boards: a pyocd
         # found elsewhere on the machine flashes fine but lists no boards.
-        if os.path.sep not in pyocd_path() or not _python_with_pyserial():
+        if not _spelled_path(pyocd_path()) or not _python_with_pyserial():
             info("installing pyocd and pyserial (flashing, debugging and the Serial view from this machine)")
             _install_pyocd()
         problem = _pyocd_problem()
