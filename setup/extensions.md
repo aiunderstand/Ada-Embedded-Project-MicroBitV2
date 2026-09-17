@@ -84,37 +84,26 @@ packages them with `vsce`, and uploads two artifacts:
 Download those `.vsix` files and upload them at
 <https://marketplace.visualstudio.com/manage> for a hand-made `0.1.x` release.
 
-## Publish
+## Upload to the Marketplace
 
 ### One-time setup
 
-1. **Azure DevOps token.** Sign in at <https://dev.azure.com> with the Microsoft
-   account that will own the extension (create an organisation if asked — its
-   name does not matter). User settings → *Personal access tokens* → *New
-   Token*: Organization **All accessible organizations**, Scopes → *Custom
-   defined* → **Marketplace: Manage**. Copy the token; it is shown once.
-2. **Publisher.** At <https://marketplace.visualstudio.com/manage>, signed in
+1. **Publisher.** At <https://marketplace.visualstudio.com/manage>, signed in
    with the same account, *Create publisher* with ID **`AIUnderstand`** (the
    extensions publish as `AIUnderstand.microbit-*`; the ID is in each
    `package.json`).
-3. **Repository secret.** In this repository: Settings → Secrets and variables →
-   Actions → *New repository secret*: name `VSCE_PAT`, value the token.
 
 ### Each release
 
 Publish **both** when either changes (the companion changes rarely). Either:
 
 - **By hand.** Build and package as above, then upload each `.vsix` at
-  <https://marketplace.visualstudio.com/manage> — or `npx @vscode/vsce publish
-  --packagePath build/microbit-flasher-<version>.vsix` with the token in
-  `VSCE_PAT`. These are the `0.1.x` releases.
-- **By workflow (build only).** Actions → **Build extension packages** → *Run
-  workflow*. It assembles both folders, packages both with `vsce`, and uploads
-  the `.vsix` files as artifacts for manual upload.
-- **By workflow.** Actions → **Publish the flasher extension** → *Run workflow*.
-  It assembles the folder, packages it with `vsce`, uploads the `.vsix` as an
-  artifact, and publishes `0.2.<run number>`. The run number is monotonic, so
-  `0.2.x` can never collide with a hand-made `0.1.x`.
+  <https://marketplace.visualstudio.com/manage>. These are the `0.1.x`
+  releases.
+- **By workflow.** Actions → **Build extension packages** → *Run workflow*. It
+  assembles both folders, packages both with `vsce`, and uploads the `.vsix`
+  files as versioned artifacts. Download them and upload them at
+  <https://marketplace.visualstudio.com/manage>.
 
 The Marketplace takes a few minutes to list a new version; students' browsers
 update the extension on their own.

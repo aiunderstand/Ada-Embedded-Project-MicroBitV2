@@ -374,9 +374,9 @@ A Codespace has **no USB**. Five consequences:
 
 `python3 tools/mb.py extension` assembles the publishable folder (bundling the
 vendored library into `extension.js`); `ada.yml` proves it packages with `vsce`
-on every push, and `publish-extension.yml` publishes it by hand as
-`0.1.<run number>`. **Do not add node/npm to the container image** for any of
-this; the runners have node, the container does not need it.
+on every push, and `publish-extension.yml` builds both `.vsix` files as
+artifacts for manual upload. **Do not add node/npm to the container image**
+for any of this; the runners have node, the container does not need it.
 
 Port forwarding (`mb.py serve`) exists and works locally, but was unreliable in a
 real Codespace. Keep it as a fallback, not the documented path.
