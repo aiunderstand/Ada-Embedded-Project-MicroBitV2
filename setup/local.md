@@ -326,6 +326,12 @@ on a desktop; the output is in Microsoft's Serial Monitor extension (step 7).
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.
 
+**Red lines under every `MicroBit` name, and Go to Definition does nothing.**
+The Ada extension has not found the compiler. Run `python3 tools/mb.py als`
+(setup does it too), then *Ada: Reload Project* from the command palette or
+restart VS Code. That writes `build/als.cgpr`, which tells the language
+server where the toolchain is without anything on PATH.
+
 **Windows: `cannot open linker script file common-ROM.ld` when building an
 example.** An old version of the tools; `git pull`. The linker was given the
 runtime's directory as a path relative to a deep build folder, which Windows

@@ -11,6 +11,7 @@ verdict was "cannot enumerate USB" with the board's own row as evidence.
 import contextlib
 import importlib.util
 import io
+import json
 import sys
 from pathlib import Path
 
@@ -175,6 +176,54 @@ with tempfile.TemporaryDirectory() as td:
           f"template and examples end with the same compiler switches and the absolute -L (got {calls})")
     check(calls[0][:3] == ["alr", "build", "--"] and calls[1][:4] == ["alr", "exec", "--", "gprbuild"],
           "the template still builds through alr build, the examples through gprbuild")
+
+# ------------------------------------------ the language server's toolchain
+# The Ada extension finds the toolchain through alr on PATH, which setup never
+# edits; the configuration file carries the paths instead.
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    (root / "boards").mkdir()
+    board = root / "boards" / "board_zfp.gpr"
+    board.write_text('project Board_ZFP is\n   -- for Runtime ("Ada") use "zfp-cortex-m4f";\n'
+                     '   for Runtime ("Ada") use "light-cortex-m4f";\nend Board_ZFP;\n')
+    ex = root / "ex.gpr"
+    ex.write_text('with "boards//board_zfp.gpr";\nproject Ex is\n'
+                  '   for Runtime ("Ada") use Board_ZFP\'Runtime ("Ada");\nend Ex;\n')
+    plain = root / "plain.gpr"
+    plain.write_text('project Plain is\n   for Runtime ("ada") use "embedded-nrf52833";\nend Plain;\n')
+    none = root / "none.gpr"
+    none.write_text("project None is\nend None;\n")
+    check(mb.project_runtime(plain) == "embedded-nrf52833", "a runtime named in the project")
+    check(mb.project_runtime(ex) == "light-cortex-m4f",
+          f"a runtime taken from a withed project, past the commented-out old name (got {mb.project_runtime(ex)})")
+    check(mb.project_runtime(none) == "embedded-nrf52833", "no runtime anywhere: the template's")
+    # point_als_at: gprconfig is faked by writing the file it would write.
+    mb.ALS_CGPR = root / "als.cgpr"
+    mb.ALS_JSON = root / ".als.json"
+    seen = []
+    def fake_gprconfig(cmd):
+        seen.append(cmd)
+        (root / "als.cgpr").write_text('for Runtime_Dir ("Ada") use "/rt/";\n')
+        return 0, ""
+    mb.capture = fake_gprconfig
+    with contextlib.redirect_stdout(io.StringIO()):
+        ok = mb.point_als_at("template", mb.TEMPLATE_GPR)
+    als = json.loads((root / ".als.json").read_text()) if (root / ".als.json").is_file() else {}
+    check(ok and als.get("gprConfigurationFile") == mb.rel(root / "als.cgpr") and als.get("alireDiagnostics") is False
+          and als.get("projectFile") == mb.rel(mb.TEMPLATE_GPR),
+          f".als.json names the project, the configuration file, and silences the alr diagnostic (got {als})")
+    check(any("--config=Ada,,embedded-nrf52833" in c and "--target=arm-eabi" in c for c in seen),
+          f"gprconfig is asked for the project's runtime on the arm-eabi target (got {seen})")
+    def broken_gprconfig(cmd):
+        (root / "als.cgpr").write_text("--  no Ada compiler found\n")
+        return 0, ""
+    mb.capture = broken_gprconfig
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        ok = mb.point_als_at("template", mb.TEMPLATE_GPR)
+    als = json.loads((root / ".als.json").read_text())
+    check(not ok and "gprConfigurationFile" not in als,
+          "a configuration without a runtime is not pointed at, whatever gprconfig's exit code")
+    mb.capture = real_capture
 
 if fail:
     print("FAIL")

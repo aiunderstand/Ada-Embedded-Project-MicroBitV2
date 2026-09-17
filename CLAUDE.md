@@ -113,6 +113,21 @@ runtime's `ld` directory as an absolute `-L` ahead of the runtime's own, so
 ld opens the script by its full name, which is never concatenated. The
 matrix job builds the deepest example on every OS to keep it that way.
 
+**The Ada extension finds the toolchain through `alr` on PATH, which setup
+never edits.** So on a Windows PC the language server reported *the project
+file has errors and could not be loaded*, put red under every name from the
+drivers library, and had no Go to Definition, while the same clone worked on
+a Mac that happens to have `alr` on PATH. The server reads
+`ada.gprConfigurationFile` (a `.cgpr` with the compiler driver and runtime
+directory spelled out), so `mb.py als` and `setup` write `build/als.cgpr`
+with `gprconfig` for the project's runtime and `.als.json` names it, with
+`alireDiagnostics` off because "alr not found in PATH" is then a fact and
+not a problem. Reproduced headless with the server binary from the Ada
+extension, PATH stripped: red lines without the file, a definition in
+`microbit.ads` with it (`tools/test_mb.py` checks the plumbing; the probe
+is `.claude/skills/verify-ui/als_probe.py`). The container writes it in
+`postCreateCommand`, since `build/` is fresh there too.
+
 **Windows on ARM is unsupported.** Alire publishes no ARM64 Windows build, and
 the x64 one crashes on startup (`0xC0000005`). `mb.py setup` detects and says so.
 

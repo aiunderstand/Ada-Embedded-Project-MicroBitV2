@@ -182,7 +182,25 @@ Check `#status`, `#out`, `window.__posted`, and `pageerror`. Enter navigating
 the page away means the script never attached its handlers — the symptom of a
 syntax error in it, which is what an interpreted `\n` in the template produces.
 
-## 7. Counting the steps
+## 7. The Ada language server, headless
+
+`als_probe.py`, next to this file, drives the Ada extension's own server
+binary over stdio like VS Code would: initialize on the repository, open
+`Code/src/main.adb`, collect diagnostics, ask for the definition of
+`MicroBit`. Two arguments: the `ada` settings as JSON (`{}` means the
+repository's `.als.json`), and the PATH to run with. A PATH without `alr`
+and the toolchain is what a Windows student has:
+
+```bash
+python3 .claude/skills/verify-ui/als_probe.py '{}' /usr/bin:/bin:/usr/sbin:/sbin
+```
+
+Red lines ("cannot find name 'MicroBit'", "could not be loaded") mean the
+server has no toolchain; a definition in `microbit.ads` means it has. Run
+it twice, about a minute apart: the server writes `.als-alire` lock files
+and a second instance within seconds waits on the first.
+
+## 8. Counting the steps
 
 To judge whether a flow is too cumbersome, count what a student actually does —
 clicks, keystrokes, and dialogs — rather than guessing. Record them, then compare

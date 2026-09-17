@@ -409,10 +409,13 @@ def runtime_root() -> str | None:
 def runtime_named(gpr: Path) -> str | None:
     """The runtime a project names literally: for Runtime ("ada") use "...";"""
     try:
-        m = re.search(r'for\s+Runtime\s*\(\s*"ada"\s*\)\s+use\s+"([^"]+)"',
-                      gpr.read_text(errors="replace"), re.I)
+        text = gpr.read_text(errors="replace")
     except OSError:
         return None
+    # The board projects keep the old runtime name in a comment right above
+    # the real one ("-- for Runtime ("ada") use "zfp-cortex-m4f";").
+    text = re.sub(r"--[^\n]*", "", text)
+    m = re.search(r'for\s+Runtime\s*\(\s*"ada"\s*\)\s+use\s+"([^"]+)"', text, re.I)
     return m.group(1) if m else None
 
 
@@ -1090,6 +1093,56 @@ def cmd_clean(args) -> int:
     return 0
 
 
+ALS_CGPR = BUILD / "als.cgpr"   # the toolchain, spelled out for the language server
+
+
+def project_runtime(gpr: Path) -> str:
+    """The Ada runtime a project builds with: named in it, or in a project it
+    withs (the zfp examples take the board project's), else the template's."""
+    named = runtime_named(gpr)
+    if named:
+        return named
+    try:
+        text = gpr.read_text(errors="replace")
+    except OSError:
+        return "embedded-nrf52833"
+    for m in re.finditer(r'with\s+"([^"]+)"', text):
+        withed = (gpr.parent / m.group(1).replace("//", "/")).resolve()
+        named = runtime_named(withed) if withed.is_file() else None
+        if named:
+            return named
+    return "embedded-nrf52833"
+
+
+def write_als_config(gpr: Path) -> bool:
+    """Write build/als.cgpr: the compiler's location and the runtime, for the
+    Ada Language Server.
+
+    The server finds the toolchain through "alr printenv" -- and looks for alr
+    on PATH only, which setup deliberately never edits. On a Windows PC the
+    result was a project that "could not be loaded", red under every name
+    from the drivers library, and no Go to Definition, while the same clone
+    on a Mac with alr on PATH worked. A configuration file carries the
+    driver and runtime paths instead, so the server loads the project with
+    nothing on PATH at all: reproduced headless here, alr and toolchain
+    hidden, red lines without it and a definition in microbit.ads with it.
+    Per machine, so it lives in build/ and is written by setup and by "als".
+    """
+    runtime = project_runtime(gpr)
+    BUILD.mkdir(parents=True, exist_ok=True)
+    rc, out = capture(["alr", "exec", "--", "gprconfig", "--batch", "--target=arm-eabi",
+                       f"--config=Ada,,{runtime}", "--config=Asm_Cpp",
+                       "-o", rel(ALS_CGPR)])
+    # gprconfig exits 0 with a file that has no Ada in it when the runtime
+    # does not exist; Runtime_Dir is what the server needs from it.
+    if rc != 0 or not ALS_CGPR.is_file() or "Runtime_Dir" not in ALS_CGPR.read_text(errors="replace"):
+        last = [l for l in out.strip().splitlines() if l.strip()]
+        print(f"  FAILED   language server configuration for runtime {runtime}: "
+              f"{last[-1][:100] if last else 'no Ada compiler in the result'}")
+        return False
+    return True
+
+
 def cmd_als(args) -> int:
     """Point the Ada Language Server at a project, without popup spam."""
     if args.use:
@@ -1098,16 +1151,28 @@ def cmd_als(args) -> int:
         pid, gpr = resolve_dir(Path(args.use_dir))
     else:
         pid, gpr = "template", TEMPLATE_GPR
+    return 0 if point_als_at(pid, gpr) else 1
+
+
+def point_als_at(pid: str, gpr: Path) -> bool:
+    """build/als.cgpr for the project's runtime, and .als.json naming both."""
     import json
-    wanted = json.dumps({"projectFile": rel(gpr)}, indent=2) + "\n"
+    have_cgpr = write_als_config(gpr)
+    settings = {"projectFile": rel(gpr)}
+    if have_cgpr:
+        settings["gprConfigurationFile"] = rel(ALS_CGPR)
+        # With the toolchain spelled out, "alr not found in PATH" is a fact,
+        # not a problem; it would sit in the Problems panel as one.
+        settings["alireDiagnostics"] = False
+    wanted = json.dumps(settings, indent=2) + "\n"
     # Only write when the content actually changes: the extension watches
     # **/.als.json and offers to restart the language server on every write.
     if ALS_JSON.is_file() and ALS_JSON.read_text() == wanted:
         info(f"language server already pointed at {pid}")
-        return 0
+        return have_cgpr
     ALS_JSON.write_text(wanted)
     info(f"language server now pointed at {pid} ({rel(gpr)})")
-    return 0
+    return have_cgpr
 
 
 def _version_line(out: str) -> str:
@@ -1624,6 +1689,16 @@ def cmd_setup(args) -> int:
                   f"gnat_arm_elf={GNAT_VERSION} gprbuild={GPRBUILD_VERSION}")
             print(f"           \"{alr_path()}\" toolchain   shows what is installed.")
 
+    if _toolchain_ok():
+        # The Ada extension: it looks for alr on PATH, which we never edit.
+        chosen = PROJECT_FILE.read_text().strip() if PROJECT_FILE.is_file() else "template"
+        try:
+            pid, gpr = ("template", TEMPLATE_GPR) if chosen == "template" else resolve_id(chosen)
+        except SystemExit:
+            pid, gpr = "template", TEMPLATE_GPR
+        if point_als_at(pid, gpr):
+            print(f"  OK       language server configuration ({rel(ALS_CGPR)}, {pid})")
+
     # 5. pyocd ---------------------------------------------------------------
     # Checked the same way as Alire and the toolchain. It used to be a "note",
     # so a student whose pyocd never installed learned that from a failed
@@ -1680,6 +1755,13 @@ def cmd_doctor(args) -> int:
         else:
             print(f"  MISSING  {name}")
             critical_ok = False
+
+    if ALS_CGPR.is_file():
+        print(f"  OK       language server configuration: {rel(ALS_CGPR)}")
+    else:
+        print(f"  missing  language server configuration -- run: python3 tools/mb.py als\n"
+              "           (without it the Ada extension needs alr on PATH; red lines and\n"
+              "           no Go to Definition otherwise)")
 
     print("\nFlashing / debugging (optional - not available in a Codespace):")
     for name, probe in (("pyocd", [pyocd_path(), "--version"]),
