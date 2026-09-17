@@ -72,6 +72,18 @@ Each produces a `.vsix`. Bump `version` in `extension/package.json` (or
 `companion/package.json`) **before** assembling — these are the hand-made
 `0.1.x` releases, and the Marketplace refuses a version it has already seen.
 
+### Build the `.vsix` files in Actions
+
+Actions → **Build extension packages** → *Run workflow* assembles both folders
+from the versions in `extension/package.json` and `companion/package.json`,
+packages them with `vsce`, and uploads two artifacts:
+
+- `microbit-flasher-<version>`
+- `microbit-companion-<version>`
+
+Download those `.vsix` files and upload them at
+<https://marketplace.visualstudio.com/manage> for a hand-made `0.1.x` release.
+
 ## Publish
 
 ### One-time setup
@@ -96,6 +108,9 @@ Publish **both** when either changes (the companion changes rarely). Either:
   <https://marketplace.visualstudio.com/manage> — or `npx @vscode/vsce publish
   --packagePath build/microbit-flasher-<version>.vsix` with the token in
   `VSCE_PAT`. These are the `0.1.x` releases.
+- **By workflow (build only).** Actions → **Build extension packages** → *Run
+  workflow*. It assembles both folders, packages both with `vsce`, and uploads
+  the `.vsix` files as artifacts for manual upload.
 - **By workflow.** Actions → **Publish the flasher extension** → *Run workflow*.
   It assembles the folder, packages it with `vsce`, uploads the `.vsix` as an
   artifact, and publishes `0.2.<run number>`. The run number is monotonic, so

@@ -1,0 +1,61 @@
+# Builds both VS Code extensions as .vsix artifacts for manual upload to the
+# Marketplace. Manual, by the lecturer, from this repository only: a template
+# instance must never package or publish the teaching extensions.
+name: Build extension packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build .vsix artifacts
+    if: github.repository == 'aiunderstand/Ada-Embedded-Project-MicroBitV2'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: versions
+        name: Read package versions
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+
+          print(f"flasher={json.load(open('extension/package.json'))['version']}")
+          print(f"companion={json.load(open('companion/package.json'))['version']}")
+          PY
+
+      - name: Assemble the publishable folders
+        run: |
+          set -euo pipefail
+          python3 mb.py extension --out build/extension
+          python3 mb.py companion --out build/companion
+
+      - name: Package the flasher
+        run: |
+          set -euo pipefail
+          cd build/extension
+          npx --yes @vscode/vsce@latest package --no-dependencies \
+            --out "$RUNNER_TEMP/microbit-flasher-${{ steps.versions.outputs.flasher }}.vsix"
+
+      - name: Package the companion
+        run: |
+          set -euo pipefail
+          cd build/companion
+          npx --yes @vscode/vsce@latest package --no-dependencies \
+            --out "$RUNNER_TEMP/microbit-companion-${{ steps.versions.outputs.companion }}.vsix"
+
+      - name: Upload the flasher package
+        uses: actions/upload-artifact@v4
+        with:
+          name: microbit-flasher-${{ steps.versions.outputs.flasher }}
+          path: ${{ runner.temp }}/microbit-flasher-${{ steps.versions.outputs.flasher }}.vsix
+
+      - name: Upload the companion package
+        uses: actions/upload-artifact@v4
+        with:
+          name: microbit-companion-${{ steps.versions.outputs.companion }}
+          path: ${{ runner.temp }}/microbit-companion-${{ steps.versions.outputs.companion }}.vsix

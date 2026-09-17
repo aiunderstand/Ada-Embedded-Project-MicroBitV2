@@ -2,7 +2,7 @@
   "name": "microbit-companion",
   "displayName": "micro:bit Companion (Codespaces)",
   "description": "Runs next to the board: installs the micro:bit v2 Flasher into your browser in a Codespace, connects gdb to it for F5, and on your own machine lists the boards and relays their serial output",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "AIUnderstand",
   "license": "MIT",
   "repository": {
