@@ -238,7 +238,10 @@ jobs:
         working-directory: My-Student-Project-2026
         run: |
           set -euo pipefail
-          if grep -rn 'Ada-Embedded-Project-MicroBitV2' .devcontainer .vscode tools; then
+          # The browser flasher is hosted once, on the template's Pages site, so
+          # that URL is deliberate and not a local path assumption.
+          if grep -rn 'Ada-Embedded-Project-MicroBitV2' .devcontainer .vscode tools \
+              | grep -vF 'https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/'; then
             echo "::error::a repository-specific path is baked into the template"
             exit 1
           fi
