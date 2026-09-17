@@ -10,6 +10,13 @@ container by the course template's `devcontainer.json`; when the Codespace
 opens, it asks VS Code to install the flasher, and VS Code puts it in the
 browser. You then plug the board in and press **Ctrl+Shift+B**.
 
+On your own machine it does something else: it runs `python3 tools/mb.py
+boards --watch` next to the board and relays what that reports -- the
+micro:bits plugged in, their serial output, the port's state -- to the
+flasher's Serial view, and passes the view's requests (read this board, stop,
+send a line) back. The flasher runs in a host without USB even on a desktop;
+this one runs where the ports are.
+
 If that ever fails, run `micro:bit: Install the flasher in this browser` from
 the command palette. In desktop VS Code it does nothing: flash with
 `python3 tools/mb.py flash` there.

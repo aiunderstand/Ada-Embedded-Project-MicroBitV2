@@ -56,9 +56,11 @@ The same keys do the same things on your own machine and in a Codespace:
 | **Ctrl+Shift+P** → *Tasks: Run Task* | *Choose project…*, *Build*, *Prove (SPARK)*, *Erase*, *Doctor* | | |
 | status bar, bottom left | **Flash micro:bit** (same as Ctrl+Shift+B) and the chosen project (click to change) | | |
 
-Serial output (`Put_Line`, 115200 baud): on your machine, the **Serial
-Monitor** extension's tab in the panel; in a Codespace, the **micro:bit ›
-Serial** view, which also sends what you type.
+Serial output (`Put_Line`, 115200 baud) is the **micro:bit › Serial** view
+in the panel, on both paths: it lists the micro:bit v2 boards it can see
+(a v1 is shown but cannot be chosen), reads the one you pick, sends what you
+type, and its **Show serial** box stops the reading when a program floods
+the port. Unplug a board and it is dropped from the list.
 
 ## Debug with breakpoints
 

@@ -55,8 +55,182 @@ function setConnected(value) {
   connected = value;
   vscode.commands.executeCommand("setContext", "microbit.connected", value);
   setStatus(value ? "Flash micro:bit (connected)" : "Flash micro:bit", false);
-  if (serialView) {
-    serialView.webview.postMessage({ type: "status", connected: value });
+  postBoards();
+}
+
+// ---------------------------------------------------------------- boards
+//
+// Which micro:bit, when there are several, and whether it is a v2 at all.
+// DAPLink's USB serial number starts with the board id: 9900 and 9901 are a
+// v1, 9903 to 9906 a v2. The same string is pyocd's unique id for the probe,
+// so the choice made here serves the flash on a desktop (build/board.txt).
+//
+// In the browser the list is navigator.usb.getDevices(), the boards this
+// browser has authorised, kept fresh by WebUSB's connect and disconnect
+// events. On a desktop this host has no USB: the companion runs
+// "mb.py boards --watch" next to the board and sends the list, the serial
+// data and the port's state here as commands, and takes open, close and
+// send back through microbit.companion.serial.
+
+const V1_IDS = ["9900", "9901"];
+const V2_IDS = ["9903", "9904", "9905", "9906"];
+
+function boardVersion(serialNumber) {
+  const prefix = (serialNumber || "").slice(0, 4);
+  return V2_IDS.includes(prefix) ? "v2" : V1_IDS.includes(prefix) ? "v1" : null;
+}
+
+function boardLabel(b) {
+  const which = b.version === "v2" ? "micro:bit v2" : b.version === "v1" ? "micro:bit v1 (not supported)" : "micro:bit?";
+  return `${which} \u00b7 ${b.id.slice(-4)}${b.port ? ` (${b.port})` : ""}`;
+}
+
+let boards = [];        // {id, version, port?, device?} -- device in the browser only
+let selectedId = null;  // the board the view chose
+let reading = true;     // the view's "Show serial" box: read the port, or leave it alone
+let boardNote = "";     // the desktop bridge's last word (opened, closed, an error)
+
+const isBrowser = () => vscode.env.uiKind === vscode.UIKind.Web && usbAvailable();
+
+function selectedBoard() {
+  return boards.find((b) => b.id === selectedId) || null;
+}
+
+/** What the view shows: the list without the device objects, and the state around it. */
+function postBoards() {
+  if (!serialView) return;
+  serialView.webview.postMessage({
+    type: "boards",
+    host: isBrowser() ? "browser" : "desktop",
+    boards: boards.map((b) => ({ id: b.id, version: b.version, port: b.port || "", label: boardLabel(b), selectable: b.version === "v2" })),
+    selected: selectedId,
+    reading,
+    connected,
+    note: boardNote,
+  });
+}
+
+/** Keep the choice, and pick one when there is none: the first v2. */
+async function settleSelection() {
+  if (!selectedBoard()) {
+    const first = boards.find((b) => b.version === "v2");
+    selectedId = first ? first.id : null;
+    await rememberBoard();
+    if (selectedId && !isBrowser() && reading && !connected) {
+      // A desktop: a newly picked board is read at once, as the view says.
+      await bridge({ op: "open", id: selectedId }).catch((err) => { boardNote = err.message; });
+    }
+  }
+  postBoards();
+}
+
+/** build/board.txt: the desktop flash (mb.py flash, pyocd -u) follows the view's choice. */
+async function rememberBoard() {
+  const root = workspaceRoot();
+  if (!root) return;
+  try {
+    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, "build", "board.txt"),
+      new TextEncoder().encode((selectedId || "") + "\n"));
+  } catch (err) {
+    log(`(could not record the chosen board: ${err.message})`);
+  }
+}
+
+/** The browser's list: the authorised devices, classified. */
+async function refreshBrowserBoards() {
+  const devices = await navigator.usb.getDevices();
+  boards = devices
+    .filter((d) => d.vendorId === MICROBIT_VID)
+    .map((d) => ({ id: d.serialNumber || `${d.vendorId}:${d.productId}`, version: boardVersion(d.serialNumber), device: d }));
+  await settleSelection();
+}
+
+/** The view chose a board: connect to it (browser) or have the bridge read it (desktop). */
+async function selectBoard(id) {
+  if (id === selectedId) return;
+  selectedId = id;
+  await rememberBoard();
+  postBoards();
+  const board = selectedBoard();
+  if (!board || board.version !== "v2") return;
+  try {
+    if (isBrowser()) {
+      if (connection && connection.device && connection.device !== board.device) {
+        await cmdDisconnect();
+      }
+      if (!liveConnection()) {
+        await connectTo(board.device);
+      }
+    } else if (reading) {
+      await bridge({ op: "open", id });
+    }
+  } catch (err) {
+    log(`board ${id.slice(-4)}: ${err.message}`);
+    boardNote = err.message;
+    postBoards();
+  }
+}
+
+/**
+ * The "Show serial" box. Not cosmetic: off means the port is not read. In the
+ * browser the library polls DAPLink for serial only while a "serialdata"
+ * listener exists, so the listener comes and goes; on the desktop the bridge
+ * closes the port.
+ */
+async function setReading(on) {
+  reading = !!on;
+  try {
+    if (isBrowser()) {
+      const usb = liveConnection();
+      if (usb) {
+        usb.removeEventListener("serialdata", onSerialData);
+        if (reading) usb.addEventListener("serialdata", onSerialData);
+      }
+    } else if (reading && selectedBoard()) {
+      await bridge({ op: "open", id: selectedId });
+    } else {
+      await bridge({ op: "close" });
+    }
+  } catch (err) {
+    boardNote = err.message;
+  }
+  postBoards();
+}
+
+const onSerialData = ({ data }) => serialReceived(data);
+
+/** A request to the companion's bridge, on a desktop. */
+async function bridge(req) {
+  try {
+    await vscode.commands.executeCommand("microbit.companion.serial", req);
+  } catch (err) {
+    throw new Error(/not found/i.test(err.message)
+      ? "The micro:bit companion extension is not installed on this machine; it lists the boards and reads their serial output. Install AIUnderstand.microbit-companion."
+      : err.message);
+  }
+}
+
+// What the companion sends, on a desktop.
+function cmdBoardsUpdate(list) {
+  boards = (list || []).map((b) => ({ id: b.id, version: b.version, port: b.port }));
+  return settleSelection();
+}
+
+function cmdSerialReceived(text) {
+  if (reading) serialReceived(text);
+}
+
+function cmdBoardsState(ev) {
+  if (!ev) return;
+  if (ev.event === "opened") {
+    boardNote = "";
+    setConnected(true);
+  } else if (ev.event === "closed") {
+    boardNote = ev.reason ? `${ev.reason}` : "";
+    setConnected(false);
+  } else if (ev.event === "error") {
+    boardNote = ev.message || "error";
+    postBoards();
   }
 }
 
@@ -75,6 +249,7 @@ let serialView = null;  // the WebviewView while it exists
 let serialBacklog = ""; // what has been shown, so a re-created view can redraw
 
 function serialReceived(data) {
+  if (!reading) return; // not shown, and on the desktop not read either
   serialBacklog = (serialBacklog + data).slice(-SERIAL_BACKLOG_MAX);
   if (serialView) {
     serialView.webview.postMessage({ type: "data", text: data });
@@ -96,6 +271,10 @@ let serialQueue = Promise.resolve();
  */
 function serialSend(text) {
   if (!connection) {
+    if (!isBrowser()) {
+      // A desktop: the bridge holds the port, not this host.
+      return bridge({ op: "send", text: text.replace(/\r?\n$/, "") }).catch((err) => log(`serial: ${err.message}`));
+    }
     log("serial: not connected, nothing sent");
     return Promise.resolve();
   }
@@ -139,6 +318,11 @@ function serialHtml(cspSource) {
   body { display: flex; flex-direction: column; font-family: var(--vscode-editor-font-family, monospace);
          font-size: var(--vscode-editor-font-size, 13px); color: var(--vscode-editor-foreground);
          background: var(--vscode-editor-background); }
+  #bar { display: flex; gap: 10px; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border, #444); flex-wrap: wrap; }
+  #bar select { font: inherit; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+                border: 1px solid var(--vscode-dropdown-border, transparent); padding: 2px 4px; max-width: 60%; }
+  #bar label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+  #host { opacity: 0.6; font-size: 90%; margin-left: auto; }
   #status { padding: 3px 8px; font-size: 90%; opacity: 0.8; border-bottom: 1px solid var(--vscode-panel-border, #444); }
   #status.on::before { content: "\u25cf "; color: var(--vscode-testing-iconPassed, #3c3); }
   #status.off::before { content: "\u25cb "; }
@@ -156,6 +340,11 @@ function serialHtml(cspSource) {
 </style>
 </head>
 <body>
+<div id="bar">
+  <select id="board" aria-label="Which micro:bit"><option value="">no micro:bit v2 found</option></select>
+  <label><input type="checkbox" id="read" checked> Show serial</label>
+  <span id="host"></span>
+</div>
 <div id="status" class="off">Not connected \u2014 press Ctrl+Shift+B, or Connect in this view's header</div>
 <pre id="out" aria-live="polite"></pre>
 <form id="form" autocomplete="off">
@@ -177,17 +366,42 @@ function serialHtml(cspSource) {
     while (out.textContent.length > MAX && out.firstChild) out.removeChild(out.firstChild);
     if (atBottom) out.scrollTop = out.scrollHeight;
   }
+  const boardSel = document.getElementById("board");
+  const readBox = document.getElementById("read");
+  let host = "browser";
+  function showStatus(connected, note) {
+    const el = document.getElementById("status");
+    el.className = connected ? "on" : "off";
+    const idle = host === "browser"
+      ? "Not connected \u2014 press Ctrl+Shift+B, or Connect in this view's header"
+      : (readBox.checked ? "Not reading \u2014 plug in a micro:bit v2 and pick it above"
+                         : "Serial off \u2014 tick Show serial to read the board");
+    el.textContent = (connected ? (readBox.checked ? "Reading the micro:bit" : "Connected; serial off") : idle)
+      + (note ? " \u2014 " + note : "");
+  }
   window.addEventListener("message", (e) => {
     const m = e.data;
     if (m.type === "data") append(m.text);
     else if (m.type === "clear") out.textContent = "";
-    else if (m.type === "status") {
-      const el = document.getElementById("status");
-      el.className = m.connected ? "on" : "off";
-      el.textContent = m.connected ? "Connected to the micro:bit"
-        : "Not connected \u2014 press Ctrl+Shift+B, or Connect in this view's header";
+    else if (m.type === "status") showStatus(m.connected, "");
+    else if (m.type === "boards") {
+      host = m.host;
+      document.getElementById("host").textContent = host === "browser" ? "boards: this browser (WebUSB)" : "boards: this machine (pyocd, serial)";
+      boardSel.textContent = "";
+      if (!m.boards.length) {
+        boardSel.appendChild(Object.assign(document.createElement("option"), { value: "", textContent: "no micro:bit v2 found" }));
+      }
+      for (const b of m.boards) {
+        const o = Object.assign(document.createElement("option"), { value: b.id, textContent: b.label, disabled: !b.selectable });
+        if (b.id === m.selected) o.selected = true;
+        boardSel.appendChild(o);
+      }
+      readBox.checked = !!m.reading;
+      showStatus(m.connected, m.note);
     }
   });
+  boardSel.addEventListener("change", () => vscode.postMessage({ type: "select", id: boardSel.value }));
+  readBox.addEventListener("change", () => vscode.postMessage({ type: "read", on: readBox.checked }));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value;
@@ -218,12 +432,17 @@ const serialViewProvider = {
         // starts from what has been received so far.
         view.webview.postMessage({ type: "status", connected });
         if (serialBacklog) view.webview.postMessage({ type: "data", text: serialBacklog });
+        postBoards();
       } else if (m.type === "send") {
         // Enter sends CR LF, the terminator Put_Line itself writes, so a Get
         // loop that stops on either character works.
         serialSend(`${m.text}\r\n`);
       } else if (m.type === "clear") {
         serialBacklog = "";
+      } else if (m.type === "select") {
+        selectBoard(m.id);
+      } else if (m.type === "read") {
+        setReading(m.on);
       }
     });
     view.onDidDispose(() => {
@@ -290,8 +509,10 @@ const usbAvailable = () => typeof navigator !== "undefined" && !!navigator.usb;
 
 /** The micro:bit this browser has already authorised, if any. Never prompts. */
 async function authorisedDevice() {
-  const devices = await navigator.usb.getDevices();
-  return devices.find((d) => d.vendorId === MICROBIT_VID);
+  await refreshBrowserBoards();
+  const chosen = selectedBoard();
+  if (chosen && chosen.device) return chosen.device;
+  return (boards.find((b) => b.version === "v2") || boards[0] || {}).device;
 }
 
 /**
@@ -408,7 +629,9 @@ async function connectTo(device) {
     log(`connection: ${s}`);
     setConnected(s === "Connected");
   });
-  usb.addEventListener("serialdata", ({ data }) => serialReceived(data));
+  // The serial listener is what makes the library poll DAPLink for serial;
+  // the "Show serial" box adds and removes it (setReading).
+  if (reading) usb.addEventListener("serialdata", onSerialData);
   usb.addEventListener("serialreset", () => serialReceived("\n--- program restarted ---\n"));
   // Installs the library's WebUSB "disconnect" handler, which is what turns
   // an unplugged board into a status other than "Connected" (worker-safe: it
@@ -417,6 +640,11 @@ async function connectTo(device) {
   await usb.initialize?.();
   await usb.connect();
   connection = usb;
+  if (device.serialNumber && selectedId !== device.serialNumber) {
+    selectedId = device.serialNumber; // the picker's choice is the choice
+    await rememberBoard();
+  }
+  postBoards();
   return usb;
 }
 
@@ -736,6 +964,7 @@ async function cmdStatus() {
     }
   }
   log(`connection: ${connection ? connection.status : "none"}`);
+  log(`boards: ${boards.length ? boards.map((b) => `${boardLabel(b)}${b.id === selectedId ? " [chosen]" : ""}`).join(", ") : "none"}; serial ${reading ? "on" : "off"}`);
   log(`gdb: ${gdb ? (gdb.running ? "attached, program running" : "attached, program stopped") : "not attached"}`);
   // The companion lives in the Codespace; this round trip is what every gdb
   // packet costs, so it is the number to quote when stepping feels slow.
@@ -777,6 +1006,10 @@ function activate(context) {
     vscode.commands.registerCommand("microbit.gdb.interrupt", cmdGdbInterrupt),
     vscode.commands.registerCommand("microbit.gdb.detach", cmdGdbDetach),
     vscode.commands.registerCommand("microbit.gdb.ping", () => "pong"),
+    // From the companion, on a desktop: the boards next to this machine.
+    vscode.commands.registerCommand("microbit.boards.update", cmdBoardsUpdate),
+    vscode.commands.registerCommand("microbit.serial.received", cmdSerialReceived),
+    vscode.commands.registerCommand("microbit.boards.state", cmdBoardsState),
     // Asks for the board at F5, inside the keypress's gesture window.
     vscode.debug.registerDebugConfigurationProvider("cortex-debug", debugConfigurationProvider),
     vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
@@ -788,12 +1021,29 @@ function activate(context) {
   // output starts flowing without the student doing anything.
   (async () => {
     try {
-      if (vscode.env.uiKind === vscode.UIKind.Web && usbAvailable() && (await authorisedDevice())) {
-        log("Board already authorised; connecting...");
-        await connectIfAuthorised();
+      if (isBrowser()) {
+        // Plugging and unplugging: the list follows, and an unplugged board
+        // that was the connection is let go of, not kept as if it were there.
+        navigator.usb.addEventListener?.("connect", () => refreshBrowserBoards().catch(() => {}));
+        navigator.usb.addEventListener?.("disconnect", async (e) => {
+          if (connection && connection.device && e.device === connection.device) {
+            log("The connected micro:bit was unplugged.");
+            await cmdDisconnect();
+          }
+          await refreshBrowserBoards();
+        });
+        if (await authorisedDevice()) {
+          log("Board already authorised; connecting...");
+          await connectIfAuthorised();
+        }
+      } else {
+        // The companion may be up already, with the list; otherwise it will send it.
+        const list = await vscode.commands.executeCommand("microbit.companion.boards");
+        if (Array.isArray(list)) await cmdBoardsUpdate(list);
+        if (reading && selectedBoard()) await bridge({ op: "open", id: selectedId });
       }
     } catch (err) {
-      log(`(could not reconnect automatically: ${err.message})`);
+      log(`(boards: ${err.message})`);
     }
   })();
 
@@ -830,6 +1080,7 @@ module.exports = {
     open: openSerialConsole,
     setConnection: (c) => { connection = c; },
   },
+  _boards: { boardVersion, boardLabel, list: () => boards, selected: () => selectedId, reading: () => reading },
   _debug: {
     setSession: (s) => { gdb = s; },
   },

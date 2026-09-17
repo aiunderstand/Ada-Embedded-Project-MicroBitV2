@@ -18,6 +18,7 @@
 
 const vscode = require("vscode");
 const net = require("net");
+const { spawn: nodeSpawn } = require("child_process");
 
 const FLASHER = "AIUnderstand.microbit-flasher";
 const DOCS = "https://github.com/aiunderstand/Ada-Embedded-Project-MicroBitV2/blob/main/setup/codespace.md";
@@ -291,6 +292,106 @@ function makeBrowserProbeProvider(ready, {
   };
 }
 
+// ------------------------------------------------------------ local boards
+//
+// On a desktop this extension runs on the student's own machine, next to
+// the board -- and the flasher, in the browser-side host, cannot reach USB
+// there. So this end runs "mb.py boards --watch" (tools/serial_bridge.py,
+// pyserial in setup's venv): a JSON line per event -- the list of boards
+// whenever it changes, polled once a second so an unplugged board is
+// noticed; serial data from the one board it was told to read -- and JSON
+// commands on stdin: open, close, send. Every event is forwarded to the
+// flasher as a command; the flasher's requests come back through
+// microbit.companion.serial. The bridge is started once and restarted if it
+// dies; when it cannot start at all (no pyserial yet), its first event says
+// so and the flasher shows that.
+
+const BRIDGE_RESTART_MS = 3000;
+
+function startLocalBoards({
+  cwd,
+  spawn = nodeSpawn,
+  commands = vscode.commands,
+  log: logLine = log,
+  python = process.platform === "win32" ? "python" : "python3",
+} = {}) {
+  let child = null;
+  let stopped = false;
+  let boards = [];       // the last list, for a flasher that activates later
+  let timer = null;
+
+  const forward = (id, arg) =>
+    commands.executeCommand(id, arg).catch(() => {
+      // The flasher is not active yet, or not installed: nothing to tell.
+    });
+
+  const handle = (line) => {
+    let ev;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      logLine(`bridge: ${line.slice(0, 120)}`);
+      return;
+    }
+    if (ev.event === "boards") {
+      boards = ev.boards || [];
+      forward("microbit.boards.update", boards);
+    } else if (ev.event === "data") {
+      forward("microbit.serial.received", ev.text);
+    } else {
+      // opened / closed / error: the flasher shows these in its view
+      if (ev.event === "error") logLine(`bridge: ${ev.message}`);
+      forward("microbit.boards.state", ev);
+    }
+  };
+
+  const start = () => {
+    if (stopped) return;
+    let buffer = "";
+    child = spawn(python, ["tools/mb.py", "boards", "--watch"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk.toString();
+      let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (line) handle(line);
+      }
+    });
+    child.stderr.on("data", (chunk) => logLine(`bridge: ${chunk.toString().trim().slice(0, 200)}`));
+    child.on("error", (err) => logLine(`bridge could not start: ${err.message}`));
+    child.on("exit", (code) => {
+      child = null;
+      if (stopped) return;
+      logLine(`bridge exited with ${code}; restarting in ${BRIDGE_RESTART_MS / 1000} s`);
+      forward("microbit.boards.state", { event: "closed", reason: "the bridge stopped" });
+      timer = setTimeout(start, BRIDGE_RESTART_MS);
+    });
+  };
+
+  /** A request from the flasher: {op: "open", id} | {op: "close"} | {op: "send", text}. */
+  const request = (req) => {
+    if (!child || !child.stdin.writable) {
+      throw new Error("the boards bridge is not running (is pyserial installed? python3 tools/mb.py setup)");
+    }
+    const cmd = req.op === "open" ? { cmd: "open", id: req.id }
+      : req.op === "send" ? { cmd: "send", text: req.text }
+      : { cmd: "close" };
+    child.stdin.write(JSON.stringify(cmd) + "\n");
+  };
+
+  start();
+  return {
+    request,
+    boards: () => boards,
+    dispose() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (child) { try { child.stdin.end(); child.kill(); } catch { /* gone already */ } }
+    },
+  };
+}
+
 function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit companion");
   context.subscriptions.push(
@@ -306,6 +407,16 @@ function activate(context) {
       { dispose: () => relay.server.close() },
       vscode.debug.registerDebugConfigurationProvider("cortex-debug", makeBrowserProbeProvider(relay.ready))
     );
+  } else if (!vscode.env.remoteName && vscode.workspace?.workspaceFolders?.length) {
+    // A desktop, with the board on this machine: the flasher's Serial view
+    // reads it through the bridge below. Attached to a Codespace this host
+    // has no USB either, and there is nothing to run.
+    const local = startLocalBoards({ cwd: vscode.workspace.workspaceFolders[0].uri.fsPath });
+    context.subscriptions.push(
+      local,
+      vscode.commands.registerCommand("microbit.companion.serial", (req) => local.request(req)),
+      vscode.commands.registerCommand("microbit.companion.boards", () => local.boards())
+    );
   }
   return ensureFlasher(context);
 }
@@ -317,4 +428,5 @@ module.exports = {
   deactivate,
   // For tools/test_companion.mjs.
   _gdb: { startGdbRelay, makeBrowserProbeProvider, explainAttachFailure, rspFrame, GDB_PORT },
+  _local: { startLocalBoards },
 };

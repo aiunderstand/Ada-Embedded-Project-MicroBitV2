@@ -1,7 +1,7 @@
 {
   "name": "microbit-companion",
   "displayName": "micro:bit Companion (Codespaces)",
-  "description": "Runs inside the Codespace: installs the micro:bit v2 Flasher into your browser, and connects gdb to the board through it for F5",
+  "description": "Runs next to the board: installs the micro:bit v2 Flasher into your browser in a Codespace, connects gdb to it for F5, and on your own machine lists the boards and relays their serial output",
   "version": "0.1.2",
   "publisher": "AIUnderstand",
   "license": "MIT",
@@ -43,12 +43,30 @@
         "command": "microbit.companion.ping",
         "title": "micro:bit: (internal) companion ping",
         "category": "micro:bit"
+      },
+      {
+        "command": "microbit.companion.serial",
+        "title": "micro:bit: (internal) serial request",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.companion.boards",
+        "title": "micro:bit: (internal) boards on this machine",
+        "category": "micro:bit"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "microbit.companion.ping",
+          "when": "false"
+        },
+        {
+          "command": "microbit.companion.serial",
+          "when": "false"
+        },
+        {
+          "command": "microbit.companion.boards",
           "when": "false"
         }
       ]

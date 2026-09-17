@@ -21,6 +21,7 @@ built, so launch.json and the CI artifact have a stable path.
     python3 tools/mb.py build --use-dir <path>    # nearest project to a file
     python3 tools/mb.py build --all               # regression sweep
     python3 tools/mb.py flash | erase | prove | doctor | als | clean
+    python3 tools/mb.py boards [--watch]          # the micro:bits here, for the extension
 """
 
 from __future__ import annotations
@@ -594,6 +595,7 @@ class ProbeCheck(NamedTuple):
     rc: int
     said: str           # the last lines it printed, for the message
     tried: tuple = ()   # every pyocd that was asked
+    listing: str = ""   # everything it printed: which boards, by unique id
 
 
 # A row of "pyocd list": an index, then the probe, then a unique ID, a
@@ -654,7 +656,7 @@ def probe_check() -> ProbeCheck:
                      "did not find the board")
             if rc != 0:
                 info(f"note: {exe} listed the board but exited with {rc}")
-            return ProbeCheck("ok", exe, rc, _tail(out), tuple(cands))
+            return ProbeCheck("ok", exe, rc, _tail(out), tuple(cands), out)
         if rc != 0 and "no available debug probes" not in low:
             verdict = "broken"
         else:
@@ -733,12 +735,66 @@ def cmd_flash(args) -> int:
     if check.state != "ok":
         cannot_flash_hint(check)
         return 0
-    rc = alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf",
-                   rel(elf)])
+    # With several boards plugged in, the flasher's choice decides which.
+    board = chosen_board(check.listing)
+    rc = alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf"]
+                  + (["-u", board] if board else []) + [rel(elf)])
     if rc == 0:
         info("serial output: VS Code's Serial Monitor extension (Microsoft), "
              "the board's port at 115200 baud")
     return rc
+
+
+def _venv_python() -> Path:
+    return VENV_DIR / ("Scripts" if os.name == "nt" else "bin") / (
+        "python.exe" if os.name == "nt" else "python3")
+
+
+def _python_with_pyserial() -> str | None:
+    """A Python that can import pyserial: setup's venv first, then this one."""
+    cands = [str(_venv_python())] if _venv_python().is_file() else []
+    cands.append(sys.executable)
+    for py in cands:
+        rc, _ = capture([py, "-c", "import serial"])
+        if rc == 0:
+            return py
+    return None
+
+
+def cmd_boards(args) -> int:
+    """The micro:bits on this machine, and their serial: tools/serial_bridge.py.
+
+    The desktop end of the extension's Serial view. The companion extension
+    runs this with --watch and relays it; --list is for people. pyserial lives
+    in setup's venv next to pyocd; a venv from before it was added gets it
+    installed here rather than sending the student back through setup.
+    """
+    if in_container():
+        print(json.dumps({"event": "error", "message": "a Codespace has no USB; the boards are in the browser"}))
+        return 1
+    py = _python_with_pyserial()
+    if not py and _venv_python().is_file():
+        info("installing pyserial into setup's venv")
+        run([str(_venv_python()), "-m", "pip", "install", "--quiet", "pyserial"], quiet=True)
+        py = _python_with_pyserial()
+    if not py:
+        print(json.dumps({"event": "error", "message": "pyserial is not installed. Run:  python3 tools/mb.py setup"}))
+        return 1
+    return run([py, str(BRIDGE), "--watch" if args.watch else "--list"], quiet=True)
+
+
+def chosen_board(listing: str) -> str | None:
+    """The board the flasher chose (build/board.txt), if pyocd sees it."""
+    try:
+        wanted = BOARD_FILE.read_text().strip()
+    except OSError:
+        return None
+    if not wanted:
+        return None
+    if wanted in listing:
+        return wanted
+    info(f"note: the chosen board {wanted[:8]}... is not connected; using the one that is")
+    return None
 
 
 def cmd_erase(args) -> int:
@@ -1095,6 +1151,8 @@ def cmd_clean(args) -> int:
 
 
 ALS_CGPR = BUILD / "als.cgpr"   # the toolchain, spelled out for the language server
+BRIDGE = REPO / "tools" / "serial_bridge.py"   # runs under the Python that has pyserial
+BOARD_FILE = BUILD / "board.txt"   # the board the flasher chose, by unique id
 
 
 def project_runtime(gpr: Path) -> str:
@@ -1435,8 +1493,9 @@ def _install_pyocd() -> bool:
             if sys.platform.startswith("linux"):
                 print("           install it with:  sudo apt install python3-venv")
             return False
+    # pyserial is for "mb.py boards": the desktop's board list and serial.
     return run([str(venv_py), "-m", "pip", "install", "--quiet", "--upgrade",
-                "pyocd>=0.44"], quiet=True) == 0
+                "pyocd>=0.44", "pyserial"], quiet=True) == 0
 
 
 UDEV_TARGET = Path("/etc/udev/rules.d/50-microbit.rules")
@@ -1818,6 +1877,11 @@ def main() -> int:
 
     p = sub.add_parser("erase", help="mass-erase the board")
     p.set_defaults(func=cmd_erase)
+
+    p = sub.add_parser("boards", help="the micro:bits on this machine, as JSON (the flasher's desktop end)")
+    p.add_argument("--watch", action="store_true",
+                   help="keep reporting changes, and take serial commands on stdin")
+    p.set_defaults(func=cmd_boards)
 
     p = sub.add_parser("prove", help="run gnatprove (SPARK)")
     target_flags(p)

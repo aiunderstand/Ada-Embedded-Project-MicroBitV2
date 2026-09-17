@@ -295,17 +295,24 @@ A Codespace has **no USB**. Five consequences:
 3. A **VS Code webview cannot do this**: webview iframes are not granted
    `allow="usb"`. Rendering-only integrations work in a webview; device access
    does not. The serial console *is* a webview view — the extension holds the
-   device and the view only shows and asks. On a desktop nothing can hold
-   the device, so the output is read with Microsoft's **Serial Monitor**
-   extension on DAPLink's serial port (`setup/local.md`, step 7). It is in
-   `.vscode/extensions.json` -- desktop-only, so in a Codespace "Install
-   All" puts it in the container where it does nothing, which is accepted
-   -- and `mb.py setup` installs every recommendation through the `code`
-   command on a desktop, so it is there before the first program prints;
-   `doctor` lists which are installed. An `mb.py serial` monitor of our own (pyserial,
-   auto-detected port, opened by the desktop flash) was written and
-   set aside on branch `desktop-serial-monitor`, in case "which COM port?"
-   turns out to be a support burden.
+   device and the view only shows and asks. On a desktop this host has no
+   USB at all, so the view's boards and serial come from the **companion**,
+   which is a recommendation too and runs there on the student's machine:
+   it spawns `mb.py boards --watch` (`tools/serial_bridge.py`, pyserial in
+   setup's venv; JSON lines: the board list whenever it changes, polled once
+   a second, serial data, port state; open/close/send on stdin) and relays
+   each event to the flasher as a command (`microbit.boards.update`,
+   `microbit.serial.received`, `microbit.boards.state`); the view's requests
+   go back through `microbit.companion.serial`. A board is told from a v1 by
+   the board id in its USB serial number (9903-9906 = v2, 9900/9901 = v1),
+   the same string pyocd calls the unique id, so the view's choice
+   (`build/board.txt`) is what `mb.py flash -u` flashes. **Show serial** is
+   not cosmetic: the library polls DAPLink only while a `serialdata` listener
+   exists, so the listener comes and goes; the bridge closes the port. In the
+   browser the list is `navigator.usb.getDevices()` kept fresh by WebUSB's
+   connect/disconnect events, and the picker adds a board to it. Microsoft's
+   Serial Monitor remains a recommended alternative; `mb.py setup` installs
+   every recommendation through the `code` command on a desktop.
 
 4. The extension must be **installed in the browser, from the Marketplace** —
    Never listed in `devcontainer.json`, which installs into the container.

@@ -179,13 +179,19 @@ the browser instead:
 
 ## 7. Read the output
 
-`Put_Line` writes to the USB serial port at **115200**. Setup installed the
-**Serial Monitor** extension from Microsoft (`ms-vscode.vscode-serial-monitor`);
-if it is not there, VS Code offers it as a recommendation, or install it from
-the Extensions view. In the panel at the bottom, open the **Serial Monitor**
-tab, choose the board's port, set the baud rate to **115200**, and click
-**Start Monitoring**. The port is named after the operating system, not the
-board:
+`Put_Line` writes to the USB serial port at **115200**. Open the **micro:bit
+› Serial** view in the panel at the bottom. It lists the micro:bit v2 boards
+plugged in (a v1 shows up too, but cannot be chosen), reads the one you pick,
+and sends what you type. **Show serial** is a real switch: unticked, the port
+is not read at all, which is how you stop a program that floods it. The board
+you pick is also the one Ctrl+Shift+B flashes when several are plugged in.
+The view needs the **micro:bit Companion** extension (setup installs it; it
+runs `python3 tools/mb.py boards` next to the board), and only one program
+can hold the port, so close any serial terminal first.
+
+Prefer Microsoft's **Serial Monitor** extension? It works too: choose the
+board's port, set **115200**, click **Start Monitoring**. The port is named
+after the operating system, not the board:
 
 | | |
 |---|---|

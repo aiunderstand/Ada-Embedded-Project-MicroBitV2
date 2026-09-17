@@ -36,10 +36,23 @@ browser (or vscode.dev / github.dev); if VS Code offers a choice, pick *Install
 in Browser*. Installed *into* the Codespace it can never start.
 
 It needs a Chromium browser — Chrome, Edge or Opera. Safari and Firefox have no
-WebUSB. Desktop VS Code has no USB picker, so there the **Flash micro:bit** button runs the
+WebUSB. Desktop VS Code has no USB picker, so there the flash runs the
 workspace's **Build & Flash** task instead, which flashes with pyocd (the course
-template's `python3 tools/mb.py flash`); the Serial view cannot connect there,
-so the output is read with Microsoft's Serial Monitor extension at 115200 baud.
+template's `python3 tools/mb.py flash`), and the Serial view's boards and
+serial come from the **micro:bit Companion** extension, which runs
+`python3 tools/mb.py boards` next to the board.
+
+## The Serial view
+
+The view lists every micro:bit it can see, tells a v2 from a v1 by the board
+id in its USB serial number (a v1 is listed but cannot be chosen), and follows
+your pick: in the browser that is the authorised device it connects to, on
+your own machine the port the companion reads and the board `pyocd` flashes
+(`build/board.txt`). Plugging a board in or out updates the list, and an
+unplugged board that was connected is let go of. **Show serial** is not
+cosmetic: unticked, the port is not read, in the browser because the library
+polls DAPLink only while something listens, on your machine because the
+companion closes the port.
 
 ## Commands
 

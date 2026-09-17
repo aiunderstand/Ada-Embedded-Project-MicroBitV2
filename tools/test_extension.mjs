@@ -388,6 +388,134 @@ const desktopConnect = await runDesktop({ command: "microbit.connect" });
 check(!desktopConnect.commands.some((c) => /requestUsbDevice/.test(c)) && desktopConnect.errors.some((e) => /mb\.py flash/.test(e)),
       "Connect on the desktop explains itself instead of asking for a picker that is not there");
 
+// ------------------------------------------------------------ boards
+// Which micro:bit, and whether it is a v2: the USB serial number's first four
+// digits are the board id. The view lists them, the choice follows in both
+// hosts, "Show serial" really stops the reading, and an unplugged board is
+// let go of.
+const boardsApi = mod.exports._boards;
+check(boardsApi.boardVersion("9904360200052820ab3ba4b3") === "v2" && boardsApi.boardVersion("9906aa") === "v2",
+      "board ids 9903-9906 are a v2");
+check(boardsApi.boardVersion("990036020005") === "v1" && boardsApi.boardVersion("") === null && boardsApi.boardVersion(undefined) === null,
+      "9900/9901 are a v1; anything else is unknown, not a v2");
+check(/micro:bit v2 · 9901 \(COM3\)/.test(boardsApi.boardLabel({ id: "9904360200052820ab3ba4b3000000000000000097969901", version: "v2", port: "COM3" })),
+      "a board is labelled by version, the last four digits of its id, and its port");
+check(/not supported/.test(boardsApi.boardLabel({ id: "99000001", version: "v1" })), "a v1 says it is not supported");
+
+const usbDevice = (serial, opened) => ({ ...fakeDevice(opened), serialNumber: serial });
+async function runBoards({ uiKind = 2, devices = [], companionBoards = [] }) {
+  const posted = [], executed = [], written = [], usbListeners = {}, handlers = {}, reached = [];
+  let viewHandler = null, provider = null;
+  const vs = {
+    ...vscode,
+    env: { uiKind },
+    debug: { registerDebugConfigurationProvider: () => ({ dispose() {} }) },
+    window: { ...vscode.window, showErrorMessage() {}, createOutputChannel: () => chan, createStatusBarItem: () => bar,
+              registerWebviewViewProvider: (id, p) => { provider = p; return { dispose() {} }; } },
+    commands: {
+      registerCommand: (id, fn) => { handlers[id] = fn; return { dispose() {} }; },
+      executeCommand: async (id, arg) => {
+        executed.push([id, arg]);
+        if (id === "microbit.companion.boards") return companionBoards;
+        if (id === "workbench.experimental.requestUsbDevice") return;
+      },
+    },
+    workspace: { workspaceFolders: [{ uri: { path: "/ws" } }],
+                 fs: { stat: async () => ({}), readFile: async () => { throw new Error("missing"); },
+                       writeFile: async (uri, bytes) => { written.push([String(uri.path || uri), new TextDecoder().decode(bytes)]); } } },
+    Uri: { joinPath: (base, ...parts) => ({ path: [base.path, ...parts].join("/") }) },
+  };
+  // Several listeners per event, as the real API has: the library registers
+  // its own "disconnect" handler on connect, next to the extension's.
+  const nav = { usb: { getDevices: async () => devices.filter((d) => !d.gone),
+                       addEventListener: (type, fn) => { (usbListeners[type] = usbListeners[type] || []).push(fn); }, removeEventListener() {} } };
+  const m = { exports: {} };
+  new Function("require", "module", "exports", "navigator", src)(
+    (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
+  m.exports.activate({ subscriptions: [] });
+  await new Promise((r) => setTimeout(r, 30));
+  const view = { webview: { options: {}, html: "", cspSource: "x", postMessage: (msg) => { posted.push(msg); },
+                            onDidReceiveMessage: (fn) => { viewHandler = fn; } }, onDidDispose() {}, show() {} };
+  provider.resolveWebviewView(view);
+  viewHandler({ type: "ready" });
+  await new Promise((r) => setTimeout(r, 30));
+  const lastBoards = () => [...posted].reverse().find((msg) => msg.type === "boards");
+  const send = async (msg) => { await viewHandler(msg); await new Promise((r) => setTimeout(r, 30)); };
+  return { posted, executed, written, usbListeners, handlers, reached, lastBoards, send, api: m.exports };
+}
+
+// The browser: authorised devices, a v1 among them.
+{
+  const opened = [];
+  const v1 = usbDevice("9900360200052820ab3ba4b30000000000000000979699aa", opened);
+  const a = usbDevice("9904360200052820ab3ba4b3000000000000000097969901", opened);
+  const b = usbDevice("9905360200052820ab3ba4b3000000000000000097969902", opened);
+  const r = await runBoards({ devices: [v1, a, b] });
+  let msg = r.lastBoards();
+  check(msg && msg.host === "browser" && msg.boards.length === 3, `the view lists every authorised micro:bit (got ${JSON.stringify(msg && msg.boards)})`);
+  check(msg && msg.boards.some((x) => x.version === "v1" && !x.selectable) && msg.boards.filter((x) => x.selectable).length === 2,
+        "the v1 is listed but cannot be chosen; the v2s can");
+  check(msg && msg.selected === a.serialNumber, "the first v2 is chosen by default");
+  check(r.written.some(([path, text]) => /build\/board\.txt$/.test(path) && text.trim() === a.serialNumber),
+        "the choice is written to build/board.txt, where mb.py flash reads it");
+  await r.send({ type: "select", id: b.serialNumber });
+  check(r.lastBoards().selected === b.serialNumber && b.opened === false && opened.length >= 1,
+        "choosing another board connects to that one");
+  // Show serial off: the serialdata listener goes, which stops the library's polling.
+  const events = [];
+  const conn = { status: "Connected", device: b, addEventListener: (t) => events.push("+" + t), removeEventListener: (t) => events.push("-" + t),
+                 disconnect: async () => { events.push("disconnect"); }, dispose() {} };
+  r.api._serial.setConnection(conn);
+  await r.send({ type: "read", on: false });
+  check(events.includes("-serialdata") && !events.includes("+serialdata") && r.lastBoards().reading === false,
+        `Show serial off removes the serialdata listener (got ${events})`);
+  r.posted.length = 0;
+  r.api._serial.received("noise\n");
+  check(!r.posted.some((x) => x.type === "data"), "and what still arrives is not shown");
+  await r.send({ type: "read", on: true });
+  check(events.filter((e) => e === "+serialdata").length === 1, "Show serial on adds it back");
+  // Unplugging the connected board lets go of it and drops it from the list.
+  b.gone = true;
+  for (const fn of r.usbListeners.disconnect) await fn({ device: b });
+  await new Promise((res) => setTimeout(res, 30));
+  check(events.includes("disconnect") && r.lastBoards().boards.length === 2 && r.lastBoards().selected === a.serialNumber,
+        `an unplugged board is disconnected and the choice moves on (got ${JSON.stringify(r.lastBoards())})`);
+  check((r.usbListeners.connect || []).length >= 1, "plugging a board in refreshes the list too");
+}
+
+// A desktop: the companion's list, its serial, and requests back to it.
+{
+  const A = "9904360200052820ab3ba4b3000000000000000097969901";
+  const r = await runBoards({ uiKind: 1 });
+  for (const id of ["microbit.boards.update", "microbit.serial.received", "microbit.boards.state"]) {
+    check(typeof r.handlers[id] === "function", `${id} is registered for the companion`);
+  }
+  check(r.executed.some(([id]) => id === "microbit.companion.boards"), "at activation the companion is asked for the boards it already knows");
+  await r.handlers["microbit.boards.update"]([{ id: A, version: "v2", port: "COM3" }, { id: "990000000001", version: "v1", port: "COM4" }]);
+  await new Promise((res) => setTimeout(res, 30));
+  const msg = r.lastBoards();
+  check(msg && msg.host === "desktop" && msg.boards.length === 2 && msg.selected === A,
+        `the companion's list is shown, the v2 chosen (got ${JSON.stringify(msg)})`);
+  check(r.executed.some(([id, arg]) => id === "microbit.companion.serial" && arg.op === "open" && arg.id === A),
+        "and the bridge is asked to read it, since Show serial is on");
+  check(r.written.some(([path, text]) => /build\/board\.txt$/.test(path) && text.trim() === A), "the choice is recorded for pyocd");
+  r.handlers["microbit.boards.state"]({ event: "opened", id: A });
+  check(r.lastBoards().connected === true, "opened means connected");
+  r.posted.length = 0;
+  r.handlers["microbit.serial.received"]("hello\r\n");
+  check(r.posted.some((x) => x.type === "data" && x.text === "hello\r\n"), "serial from the bridge reaches the view");
+  await r.send({ type: "read", on: false });
+  check(r.executed.some(([id, arg]) => id === "microbit.companion.serial" && arg.op === "close"), "Show serial off closes the port");
+  r.posted.length = 0;
+  r.handlers["microbit.serial.received"]("late\r\n");
+  check(!r.posted.some((x) => x.type === "data"), "and nothing is shown after that");
+  await r.send({ type: "send", text: "hi" });
+  check(r.executed.some(([id, arg]) => id === "microbit.companion.serial" && arg.op === "send" && arg.text === "hi"),
+        "a typed line goes to the bridge");
+  r.handlers["microbit.boards.state"]({ event: "closed", id: A, reason: "unplugged" });
+  check(r.lastBoards().connected === false && /unplugged/.test(r.lastBoards().note), "an unplugged board is reported as such");
+}
+
 // -------------------------------------------------------------- debugging, on the board
 // These use the first module instance (`mod`/`handlers`), and run here rather
 // than up by the command-registration checks because they need runFlash's

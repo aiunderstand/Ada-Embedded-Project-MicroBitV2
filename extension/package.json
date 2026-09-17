@@ -89,6 +89,21 @@
         "command": "microbit.gdb.ping",
         "title": "micro:bit: (internal) gdb ping",
         "category": "micro:bit"
+      },
+      {
+        "command": "microbit.boards.update",
+        "title": "micro:bit: (internal) boards update",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.serial.received",
+        "title": "micro:bit: (internal) serial data",
+        "category": "micro:bit"
+      },
+      {
+        "command": "microbit.boards.state",
+        "title": "micro:bit: (internal) board state",
+        "category": "micro:bit"
       }
     ],
     "keybindings": [
@@ -140,17 +155,29 @@
         {
           "command": "microbit.gdb.ping",
           "when": "false"
+        },
+        {
+          "command": "microbit.boards.update",
+          "when": "false"
+        },
+        {
+          "command": "microbit.serial.received",
+          "when": "false"
+        },
+        {
+          "command": "microbit.boards.state",
+          "when": "false"
         }
       ],
       "view/title": [
         {
           "command": "microbit.connect",
-          "when": "view == microbitSerial && !microbit.connected",
+          "when": "view == microbitSerial && microbit.usbHost && !microbit.connected",
           "group": "navigation@1"
         },
         {
           "command": "microbit.disconnect",
-          "when": "view == microbitSerial && microbit.connected",
+          "when": "view == microbitSerial && microbit.usbHost && microbit.connected",
           "group": "navigation@1"
         },
         {

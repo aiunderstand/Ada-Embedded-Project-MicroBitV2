@@ -225,6 +225,65 @@ with tempfile.TemporaryDirectory() as td:
           "a configuration without a runtime is not pointed at, whatever gprconfig's exit code")
     mb.capture = real_capture
 
+# ------------------------------------------------------------ the bridge
+# tools/serial_bridge.py is the desktop end of the flasher's Serial view: the
+# boards as JSON lines, one port read at a time, an unplugged board noticed.
+bspec = importlib.util.spec_from_file_location("bridge", ROOT / "tools" / "serial_bridge.py")
+bridge = importlib.util.module_from_spec(bspec)
+bspec.loader.exec_module(bridge)
+import time, types
+Port = lambda dev, vid, sn: types.SimpleNamespace(device=dev, vid=vid, serial_number=sn, description="USB Serial Device")
+V2 = "9904360200052820ab3ba4b3000000000000000097969901"
+ports = [Port("COM3", 0x0D28, V2), Port("COM4", 0x0D28, "9900000012345678"), Port("COM5", 0x1234, "x")]
+listed = bridge.boards_from(ports)
+check([b["version"] for b in listed] == ["v1", "v2"] and listed[1]["port"] == "COM3",
+      f"micro:bits are told apart by the board id in the serial number; other devices are not listed (got {listed})")
+class FakePort:
+    made = []
+    def __init__(self, port, baud, timeout):
+        self.port, self.baud, self.buf, self.writes, self.closed = port, baud, [b"hello\r\n"], [], False
+        FakePort.made.append(self)
+    @property
+    def in_waiting(self):
+        return len(self.buf[0]) if self.buf else 0
+    def read(self, n):
+        if self.buf:
+            return self.buf.pop(0)
+        time.sleep(0.02)
+        return b""
+    def write(self, data):
+        self.writes.append(data)
+    def close(self):
+        self.closed = True
+out = io.StringIO()
+plugged = {"ports": ports}
+br = bridge.Bridge(lambda: plugged["ports"], FakePort, out, poll_s=0.05)
+br.poll()
+br.command(json.dumps({"cmd": "open", "id": V2}))
+time.sleep(0.15)
+br.command(json.dumps({"cmd": "send", "text": "hi"}))
+plugged["ports"] = [ports[1], ports[2]]   # the v2 is unplugged
+br.poll()
+events = [json.loads(l) for l in out.getvalue().splitlines()]
+kinds = [e["event"] for e in events]
+check(kinds[0] == "boards" and len(events[0]["boards"]) == 2, "the list is the first thing said")
+check("opened" in kinds and any(e["event"] == "data" and e["text"] == "hello\r\n" for e in events),
+      f"open reads the port and reports its data (got {kinds})")
+check(FakePort.made and FakePort.made[0].baud == 115200 and FakePort.made[0].writes == [b"hi\r\n"],
+      "115200 baud, and a sent line ends in CR LF")
+check(any(e["event"] == "closed" and e.get("reason") == "unplugged" for e in events) and FakePort.made[0].closed,
+      f"an unplugged board closes its port and says so (got {events})")
+br.command(json.dumps({"cmd": "open", "id": "nope"}))
+check(json.loads(out.getvalue().splitlines()[-1])["event"] == "error", "opening a board that is not there is an error, not a crash")
+
+# mb.py flash follows the flasher's choice when pyocd sees that board.
+mb.BOARD_FILE = Path(tempfile.mkdtemp()) / "board.txt"
+check(mb.chosen_board("0 ARM " + V2) is None, "no choice recorded, no -u")
+mb.BOARD_FILE.write_text(V2 + "\n")
+check(mb.chosen_board("  0   ARM BBC micro:bit CMSIS-DAP   " + V2 + "   ...") == V2, "the recorded board, when pyocd lists it")
+with contextlib.redirect_stdout(io.StringIO()):
+    check(mb.chosen_board("No available debug probes") is None, "and not when it is unplugged: the note says so and the flash goes on")
+
 if fail:
     print("FAIL")
     for f in fail:

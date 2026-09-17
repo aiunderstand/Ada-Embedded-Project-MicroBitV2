@@ -1,8 +1,10 @@
 //  Regression test for the companion's gdb relay (companion/extension.js).
 //  Node built-ins only: a real TCP client plays gdb, a stand-in for
 //  vscode.commands plays the flasher in the browser.
+import child_process from "child_process";
 import fs from "fs";
 import net from "net";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -21,9 +23,10 @@ const vscodeStub = {
 };
 const mod = { exports: {} };
 new Function("require", "module", "exports", src)(
-  (n) => (n === "net" ? net : n === "vscode" ? vscodeStub : (() => { throw new Error("unknown " + n); })()),
+  (n) => (n === "net" ? net : n === "child_process" ? child_process : n === "vscode" ? vscodeStub : (() => { throw new Error("unknown " + n); })()),
   mod, mod.exports);
 const { startGdbRelay, makeBrowserProbeProvider, explainAttachFailure, GDB_PORT } = mod.exports._gdb;
+const { startLocalBoards } = mod.exports._local;
 
 // ------------------------------------------------------- the browser end
 // What the flasher answers, keyed by packet body. A pending `c` resolves on
@@ -263,9 +266,65 @@ check(explainAttachFailure(new Error("no board")) === "micro:bit: no board", "ex
 
 relay.server.close();
 
+// ------------------------------------------------------- the desktop end
+// On a desktop the companion runs "mb.py boards --watch" and relays its JSON
+// lines to the flasher as commands; the flasher's requests go back on the
+// bridge's stdin. A node script plays the bridge here: real pipes, real lines.
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-"));
+  fs.writeFileSync(path.join(dir, "bridge.js"), `
+    const boards = [{ id: "9904360200052820ab3ba4b3000000000000000097969901", port: "COM3", version: "v2", description: "USB Serial Device" }];
+    const emit = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+    emit({ event: "boards", boards });
+    let buf = "";
+    process.stdin.on("data", (c) => {
+      buf += c;
+      let nl;
+      while ((nl = buf.indexOf("\\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        const cmd = JSON.parse(line);
+        if (cmd.cmd === "open") { emit({ event: "opened", id: cmd.id, port: "COM3" }); emit({ event: "data", id: cmd.id, text: "hello\\r\\n" }); }
+        else if (cmd.cmd === "send") emit({ event: "data", id: boards[0].id, text: "echo " + cmd.text + "\\r\\n" });
+        else if (cmd.cmd === "close") emit({ event: "closed", id: boards[0].id });
+      }
+    });
+    process.stdin.on("end", () => process.exit(0));
+  `);
+  const forwarded = [];
+  const commands = { executeCommand: async (id, arg) => { forwarded.push([id, arg]); } };
+  const logged = [];
+  const local = startLocalBoards({
+    cwd: dir, commands, log: (l) => logged.push(l),
+    python: process.execPath,
+    spawn: (exe, args, opts) => child_process.spawn(exe, [path.join(dir, "bridge.js")], opts),
+  });
+  await sleep(400);
+  check(forwarded.some(([id, arg]) => id === "microbit.boards.update" && Array.isArray(arg) && arg[0].version === "v2"),
+        "the bridge's board list reaches the flasher as microbit.boards.update");
+  check(local.boards().length === 1, "and is kept for a flasher that activates later");
+  local.request({ op: "open", id: local.boards()[0].id });
+  await sleep(300);
+  check(forwarded.some(([id, arg]) => id === "microbit.boards.state" && arg.event === "opened"),
+        "an open request goes to the bridge and its answer comes back as state");
+  check(forwarded.some(([id, arg]) => id === "microbit.serial.received" && arg === "hello\r\n"),
+        "serial data reaches the flasher as microbit.serial.received");
+  local.request({ op: "send", text: "hi" });
+  await sleep(300);
+  check(forwarded.some(([id, arg]) => id === "microbit.serial.received" && /echo hi/.test(arg)), "a line to send reaches the bridge");
+  local.request({ op: "close" });
+  await sleep(300);
+  check(forwarded.some(([id, arg]) => id === "microbit.boards.state" && arg.event === "closed"), "and so does close");
+  local.dispose();
+  await sleep(300);
+  let refused = "";
+  try { local.request({ op: "close" }); } catch (e) { refused = e.message; }
+  check(/not running/.test(refused), "after dispose a request says the bridge is not running");
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite");
+console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite, desktop bridge");
