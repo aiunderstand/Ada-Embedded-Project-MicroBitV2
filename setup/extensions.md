@@ -28,8 +28,8 @@ into a publishable folder — for the flasher it bundles the vendored
 ## Build (assemble the folder)
 
 ```shell
-python3 tools/mb.py extension --out build/extension
-python3 tools/mb.py companion --out build/companion
+python3 mb.py extension --out build/extension
+python3 mb.py companion --out build/companion
 ```
 
 Each writes a self-contained folder — `package.json`, the (bundled)
@@ -111,7 +111,7 @@ Flasher** → **Install**. *Show Running Extensions* (command palette) should li
 it under **web worker** with an activation time, and **Flash micro:bit** should
 be in the status bar. If it shows *Activating…* forever, it was installed into
 the Codespace — uninstall it there and install again from the search box. Then
-plug in a board, **Ctrl+Shift+B** to flash, and F5 to check debugging end to end.
+plug in a board, **Ctrl+F5** to flash, and F5 to check debugging end to end.
 
 ## Why nothing else delivers it
 

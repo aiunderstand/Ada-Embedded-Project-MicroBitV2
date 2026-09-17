@@ -62,7 +62,7 @@
     "updateContentCommand": "git config --global --add safe.directory '*' && git submodule update --init --recursive",
 
     // Tells the student straight away whether their environment is usable.
-    "postCreateCommand": "python3 tools/mb.py als && python3 tools/mb.py doctor",
+    "postCreateCommand": "python3 mb.py setup",
 
 
     "customizations": {

@@ -36,7 +36,7 @@ async function ensureFlasher(context, { force = false } = {}) {
   if (vscode.env.uiKind !== vscode.UIKind.Web) {
     if (force) {
       vscode.window.showInformationMessage(
-        "The micro:bit flasher is for VS Code in the browser. Here, flash with: python3 tools/mb.py flash"
+        "The micro:bit flasher is for VS Code in the browser. Here, flash with: python3 mb.py flash"
       );
     }
     return "desktop";
@@ -50,7 +50,7 @@ async function ensureFlasher(context, { force = false } = {}) {
     await vscode.commands.executeCommand("workbench.extensions.installExtension", FLASHER);
     await context.globalState.update(DONE_KEY, true);
     vscode.window.showInformationMessage(
-      "micro:bit flasher installed in your browser. Plug the board in and press Ctrl+Shift+B to build and flash."
+      "micro:bit flasher installed in your browser. Plug the board in and press Ctrl+F5 to build and flash."
     );
     return "installed";
   } catch (err) {
@@ -372,7 +372,7 @@ function startLocalBoards({
   /** A request from the flasher: {op: "open", id} | {op: "close"} | {op: "send", text}. */
   const request = (req) => {
     if (!child || !child.stdin.writable) {
-      throw new Error("the boards bridge is not running (is pyserial installed? python3 tools/mb.py setup)");
+      throw new Error("the boards bridge is not running (is pyserial installed? python3 mb.py setup)");
     }
     const cmd = req.op === "open" ? { cmd: "open", id: req.id }
       : req.op === "send" ? { cmd: "send", text: req.text }

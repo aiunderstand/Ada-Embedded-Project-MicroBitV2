@@ -21,11 +21,12 @@
 //  workspace's "Build & Flash" task instead, and the Serial view cannot connect;
 //  Microsoft's Serial Monitor extension is the desktop's console.
 //
-//  One key on every path: Ctrl+Shift+B. It is VS Code's build chord, which
-//  runs the "Build & Flash" task (mb.py flash, pyocd) on a desktop. In the
-//  browser this extension takes the chord over ("when": microbit.usbHost, a
-//  context set at activation), because there the board is reachable only
-//  from here, and the picker only inside the keypress's gesture window.
+//  The keys, on every path: Ctrl+Shift+B builds (VS Code's own build task),
+//  Ctrl+F5 builds and flashes, F5 builds, flashes and debugs. Ctrl+F5 is VS
+//  Code's "run without debugging" chord, which is what a flash is on a
+//  board; this extension binds it on both paths -- in the browser it flashes
+//  over WebUSB, asking for the board inside the keypress's gesture window,
+//  and on a desktop it runs the "Build & Flash" task (mb.py flash, pyocd).
 
 /* global createUSBConnection, GdbServer */
 
@@ -345,7 +346,7 @@ function serialHtml(cspSource) {
   <label><input type="checkbox" id="read" checked> Show serial</label>
   <span id="host"></span>
 </div>
-<div id="status" class="off">Not connected \u2014 press Ctrl+Shift+B, or Connect in this view's header</div>
+<div id="status" class="off">Not connected \u2014 press Ctrl+F5, or Connect in this view's header</div>
 <pre id="out" aria-live="polite"></pre>
 <form id="form" autocomplete="off">
   <input id="in" type="text" placeholder="Type a line and press Enter to send it to the micro:bit" aria-label="Text to send">
@@ -373,7 +374,7 @@ function serialHtml(cspSource) {
     const el = document.getElementById("status");
     el.className = connected ? "on" : "off";
     const idle = host === "browser"
-      ? "Not connected \u2014 press Ctrl+Shift+B, or Connect in this view's header"
+      ? "Not connected \u2014 press Ctrl+F5, or Connect in this view's header"
       : (readBox.checked ? "Not reading \u2014 plug in a micro:bit v2 and pick it above"
                          : "Serial off \u2014 tick Show serial to read the board");
     el.textContent = (connected ? (readBox.checked ? "Reading the micro:bit" : "Connected; serial off") : idle)
@@ -491,7 +492,7 @@ async function readHex() {
   } catch {
     throw new Error(
       `${HEX_PATH} not found. Build first: press Ctrl+Shift+B, or run ` +
-        "python3 tools/mb.py build"
+        "python3 mb.py build"
     );
   }
   const text = new TextDecoder().decode(bytes);
@@ -595,17 +596,17 @@ function desktopAdvice() {
   if (vscode.env.remoteName) {
     // Desktop VS Code attached to a Codespace: the board is on this machine,
     // pyocd in the Codespace cannot see it, and mb.py's own hint for that
-    // case says "press Ctrl+Shift+B" -- which is what just failed.
+    // case says "press Ctrl+F5" -- which is what just failed.
     return (
       "This VS Code runs on your machine, which has no USB picker, and the " +
         "Codespace it is attached to has no USB at all. Open the Codespace in the " +
-        "browser (Chrome or Edge) and press Ctrl+Shift+B there, or download build/main.hex " +
+        "browser (Chrome or Edge) and press Ctrl+F5 there, or download build/main.hex " +
         "and drop it on https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/"
     );
   }
   return (
     "Desktop VS Code cannot open the board over WebUSB; here pyocd flashes it: " +
-      "press Ctrl+Shift+B (the Build & Flash task), or run python3 tools/mb.py flash. " +
+      "press Ctrl+F5 (the Build & Flash task), or run python3 mb.py flash. " +
       "Serial output: Microsoft's Serial Monitor extension, on the board's port at 115200 baud."
   );
 }
@@ -689,7 +690,7 @@ const CHOOSE_TASK = "Choose project..."; // tasks.json label; its input shows th
 async function refreshProjectItem() {
   const chosen = (await readTextIfPresent("build/project.txt")) || "template";
   projectItem.text = `$(folder) ${chosen}`;
-  projectItem.tooltip = `Ctrl+Shift+B builds and flashes: ${chosen}. Click to choose another project, or 'template' for your own program.`;
+  projectItem.tooltip = `Ctrl+F5 builds and flashes: ${chosen}. Click to choose another project, or 'template' for your own program.`;
   projectItem.show();
 }
 
@@ -761,7 +762,7 @@ async function flashWithPyocd() {
   if (result === null) {
     throw new Error(
       `Desktop VS Code cannot open the board over WebUSB, and this workspace has no ` +
-        `"${FLASH_TASK}" task to run instead. In the course template: python3 tools/mb.py flash`
+        `"${FLASH_TASK}" task to run instead. In the course template: python3 mb.py flash`
     );
   }
   if (result === false) {
@@ -816,7 +817,7 @@ async function cmdFlash() {
     }
     if (built === null && !(await hexExists())) {
       throw new Error(
-        "Nothing to flash. Build first: Ctrl+Shift+B, or python3 tools/mb.py build"
+        "Nothing to flash. Build first: Ctrl+Shift+B, or python3 mb.py build"
       );
     }
     const hex = await readHex();
@@ -925,7 +926,7 @@ async function cmdGdbDetach() {
 // a gesture, though. VS Code asks every debug-configuration provider for the
 // type to resolve the configuration before it builds or starts anything, and
 // a provider registered here, in the browser, runs inside that window. So the
-// board is asked for at F5, exactly as Ctrl+Shift+B asks before building; by
+// board is asked for at F5, exactly as Ctrl+F5 asks before building; by
 // the time gdb attaches, the connection already exists.
 const debugConfigurationProvider = {
   async resolveDebugConfiguration(folder, config) {
@@ -981,9 +982,10 @@ function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit");
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = "microbit.flash";
-  status.tooltip = "Build and flash to the micro:bit (Ctrl+Shift+B)";
+  status.tooltip = "Build and flash to the micro:bit (Ctrl+F5)";
   setStatus("Flash micro:bit", false);
-  // The build chord is this extension's only in the browser; see the header.
+  // Where the board is reachable from here: the view's Connect and Disconnect
+  // buttons show only then.
   vscode.commands.executeCommand("setContext", "microbit.usbHost",
     vscode.env.uiKind === vscode.UIKind.Web && usbAvailable());
   projectItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
@@ -1050,7 +1052,7 @@ function activate(context) {
   log("micro:bit flasher ready.");
   if (vscode.env.uiKind !== vscode.UIKind.Web) {
     log(
-      `note: this is desktop VS Code, which has no USB picker. Ctrl+Shift+B and the Flash button run the ` +
+      `note: this is desktop VS Code, which has no USB picker. Ctrl+F5 and the Flash button run the ` +
         `"${FLASH_TASK}" task (pyocd) here; the Serial view cannot connect, ` +
         `Microsoft's Serial Monitor extension shows the output (115200 baud).`
     );

@@ -26,7 +26,7 @@ follows it. There is nothing to edit in `.vscode/launch.json`.
 ## In a browser Codespace
 
 Set a breakpoint and press **F5**. The first time, the browser asks which USB
-device to use — choose the micro:bit, as for Ctrl+Shift+B; after that the board
+device to use — choose the micro:bit, as for Ctrl+F5; after that the board
 is remembered and F5 goes straight ahead. It builds, flashes, and stops at the
 breakpoint.
 

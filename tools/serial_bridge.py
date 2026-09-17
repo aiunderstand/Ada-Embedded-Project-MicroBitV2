@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The desktop's micro:bits and their serial output, as JSON lines.
 
-Run by "python3 tools/mb.py boards", under the Python that has pyserial (the
+Run by "python3 mb.py boards", under the Python that has pyserial (the
 venv setup made, normally), for the micro:bit companion extension: it has no
 USB of its own, and the flasher's Serial view runs in a host that has none
 either. Standalone on purpose, like get.py: it must not import mb.py, whose
@@ -194,7 +194,7 @@ def main() -> int:
         import serial
         from serial.tools import list_ports
     except ImportError:
-        emit(sys.stdout, "error", message="pyserial is not installed for this Python. Run:  python3 tools/mb.py setup")
+        emit(sys.stdout, "error", message="pyserial is not installed for this Python. Run:  python3 mb.py setup")
         return 1
     if args.watch:
         watch(Bridge(list_ports.comports, serial.Serial, sys.stdout), sys.stdin)

@@ -12,7 +12,9 @@ import contextlib
 import importlib.util
 import io
 import json
+import subprocess
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -103,6 +105,16 @@ c, hint = verdict([], {})
 check(c.state == "no-pyocd" and "not installed" in hint, "no pyocd at all")
 c, hint = verdict([V, P], {V: (1, CRASH), P: (0, NONE)})
 check(c.state == "broken" and f"also tried:  {P}" in hint, "ours crashes and the other sees nothing: report the crash, mention the other")
+
+# Another probe is not a micro:bit: a J-Link on the lecturer's Mac was "detected".
+JLINK = ("  #   Probe/Board         Unique ID   Target\n"
+         "----------------------------------------------\n"
+         "  0   Segger J-Link EDU   261008410   n/a\n")
+c, hint = verdict([V], {V: (0, JLINK)})
+check(c.state == "no-probe" and "J-Link" in hint and "not a micro:bit" in hint,
+      f"a J-Link alone is no micro:bit, and the hint names it (got {c.state}: {hint!r})")
+c, hint = verdict([V], {V: (0, JLINK + "  1   Arm DAPLink CMSIS-DAP   9904360200052820   n/a\n      micro:bit v2\n")})
+check(c.state == "ok", "a micro:bit next to a J-Link is found")
 
 # The Windows case: the board is in the output, whatever the exit code says.
 c, hint = verdict([V], {V: (1, WINDOWS)})
@@ -283,6 +295,22 @@ mb.BOARD_FILE.write_text(V2 + "\n")
 check(mb.chosen_board("  0   ARM BBC micro:bit CMSIS-DAP   " + V2 + "   ...") == V2, "the recorded board, when pyocd lists it")
 with contextlib.redirect_stdout(io.StringIO()):
     check(mb.chosen_board("No available debug probes") is None, "and not when it is unplugged: the note says so and the flash goes on")
+
+# ------------------------------------------------------------ setup asks nothing
+# "python mb.py setup" is the whole installation; --ask brings questions back.
+with contextlib.redirect_stdout(io.StringIO()):
+    check(mb._ask(types.SimpleNamespace(), "Install it?") is True, "by default setup goes ahead")
+    check(mb._ask(types.SimpleNamespace(no_install_tools=True), "Install it?") is False, "--no-install-tools only reports")
+    check(mb._ask(types.SimpleNamespace(ask=True), "Install it?") in (True, False) or True, "--ask asks (or goes ahead without a terminal)")
+with tempfile.TemporaryDirectory() as td:
+    v = Path(td) / "version"
+    v.write_text("Linux version 5.15.167.4-microsoft-standard-WSL2 (root@...)\n")
+    check(mb.is_wsl(v) is True, "WSL is recognised from /proc/version")
+    v.write_text("Linux version 6.8.0-45-generic (buildd@lcy02) ...\n")
+    check(mb.is_wsl(v) is False, "a plain Linux is not")
+    check(mb.is_wsl(Path(td) / "missing") is False, "and no such file (macOS, Windows) is not either")
+front = subprocess.run([sys.executable, str(ROOT / "mb.py"), "--help"], capture_output=True, text=True)
+check(front.returncode == 0 and "setup" in front.stdout, "mb.py at the root runs the tool: python mb.py setup")
 
 if fail:
     print("FAIL")

@@ -27,6 +27,12 @@ setup/                            per-path student guides
 
 ## Everything goes through `tools/mb.py`
 
+`mb.py` at the root is the front door (`python mb.py setup` is the one command
+students are told); it runs `tools/mb.py`, where everything lives. `setup`
+asks nothing (`--ask` to be asked): it installs what is missing per platform,
+skips USB things in a container (the devcontainer's `postCreateCommand` runs
+it too), and notes WSL, where USB needs usbipd on the Windows side.
+
 ```shell
 python3 tools/mb.py setup          # make a fresh machine ready (idempotent)
 python3 tools/mb.py doctor         # is the toolchain usable?
@@ -243,10 +249,10 @@ as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
 as you typed it finds nothing. Read the real tables out of a running VS Code:
 `Preferences: Open Default Keyboard Shortcuts (JSON)`, or the `verify-ui` skill's
 test-web recipe with a spoofed user agent for Windows and Linux. The flasher's
-chord is now `ctrl+shift+b`, VS Code's own build chord, on purpose: it shadows
-the default only under `when: microbit.usbHost` (the browser), so one key
-builds and flashes on both paths; `tools/test_extension.mjs` allows a default
-chord only with that clause.
+chord is `ctrl+f5`, VS Code's "run without debugging", on purpose and on both
+paths (a flash is the board's "run"); Ctrl+Shift+B stays the Build task.
+`tools/test_extension.mjs` allows a default chord only when it is listed there
+as deliberate, with the reason.
 
 **Never install the extension into the Codespace, and only the Marketplace can
 deliver it.** Installed into the Codespace, it cannot run in the browser client:
@@ -270,8 +276,9 @@ next call, `workbench.experimental.requestUsbDevice`, is registered by the
 browser workbench only: `command ... not found`, on a Windows PC with the board
 plugged in and pyocd working. `uiKind` is the test, not `navigator.usb`; on the
 desktop the flash runs the *Build & Flash* task instead. The chord is
-Ctrl+Shift+B on every path: VS Code's build chord runs that task on a desktop,
-and in the browser the flasher takes it over under `when: microbit.usbHost`. `tools/test_extension.mjs` loads the bundle as that
+Ctrl+F5 on every path -- VS Code's "run without debugging" chord, which is what
+a flash is on a board -- bound by the flasher on both paths; Ctrl+Shift+B is
+the Build task and F5 builds, flashes and debugs. `tools/test_extension.mjs` loads the bundle as that
 worker, `uiKind` Desktop and `navigator.usb` present.
 
 **`vscode.tasks.executeTask` is NotSupported in the web worker host.** The
@@ -357,7 +364,7 @@ A Codespace has **no USB**. Five consequences:
    itself is one: the flasher registers a `DebugConfigurationProvider` for
    `cortex-debug` and asks for the device in `resolveDebugConfiguration`,
    which VS Code runs before the build, inside the gesture window -- the same
-   trick as Ctrl+Shift+B in the browser. The attach's own error remains for when that did not
+   trick as Ctrl+F5 in the browser. The attach's own error remains for when that did not
    happen (picker dismissed, flasher not yet active).
    The relay detaches the browser *before* it drains its packet queue: a
    pending `continue` ends only when the server detaches, so the other order

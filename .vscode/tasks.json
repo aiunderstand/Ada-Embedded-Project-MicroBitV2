@@ -16,7 +16,7 @@
             "args": ["tools/mb.py", "flash"],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": ["$ada-error", "$ada-warning"],
-            "group": { "kind": "build", "isDefault": true }
+            "group": "build"
         },
         {
             "label": "Build",
@@ -27,7 +27,9 @@
             "args": ["tools/mb.py", "build"],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": ["$ada-error", "$ada-warning"],
-            "group": "build"
+            // Ctrl+Shift+B. Ctrl+F5 is Build & Flash (the flasher extension, on
+            // both paths) and F5 builds, flashes and debugs.
+            "group": { "kind": "build", "isDefault": true }
         },
         {
             "label": "Choose project...",

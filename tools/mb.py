@@ -15,13 +15,13 @@ submodule.
 Firmware always ends up at build/main.elf / .hex / .bin, whichever project you
 built, so launch.json and the CI artifact have a stable path.
 
-    python3 tools/mb.py list
-    python3 tools/mb.py build                     # the template
-    python3 tools/mb.py build --use ravenscar/buttons
-    python3 tools/mb.py build --use-dir <path>    # nearest project to a file
-    python3 tools/mb.py build --all               # regression sweep
-    python3 tools/mb.py flash | erase | prove | doctor | als | clean
-    python3 tools/mb.py boards [--watch]          # the micro:bits here, for the extension
+    python3 mb.py list
+    python3 mb.py build                     # the template
+    python3 mb.py build --use ravenscar/buttons
+    python3 mb.py build --use-dir <path>    # nearest project to a file
+    python3 mb.py build --all               # regression sweep
+    python3 mb.py flash | erase | prove | doctor | als | clean
+    python3 mb.py boards [--watch]          # the micro:bits here, for the extension
 """
 
 from __future__ import annotations
@@ -317,11 +317,11 @@ def _not_found(prog: str) -> str:
         "  process simply cannot see it -- a VS Code task started from the",
         "  desktop does not have the terminal's PATH. Either fix works:",
         "",
-        "    run 'python3 tools/mb.py setup' in that terminal   (records where it is)",
+        "    run 'python3 mb.py setup' in that terminal   (records where it is)",
         "    or close VS Code and start it with 'code .' from there",
         "",
         "  If that command does not work either, Alire is not installed yet:",
-        "  'python3 tools/mb.py setup' installs it.",
+        "  'python3 mb.py setup' installs it.",
     ])
 
 
@@ -589,6 +589,14 @@ def in_container() -> bool:
                 or Path("/.dockerenv").exists())
 
 
+def is_wsl(version_file: Path = Path("/proc/version")) -> bool:
+    """Linux under Windows: a USB device is Windows' until usbipd hands it over."""
+    try:
+        return "microsoft" in version_file.read_text(errors="replace").lower()
+    except OSError:
+        return False
+
+
 class ProbeCheck(NamedTuple):
     state: str          # ok / no-pyocd / broken / denied / no-probe
     exe: str            # the pyocd the verdict is about
@@ -598,16 +606,27 @@ class ProbeCheck(NamedTuple):
     listing: str = ""   # everything it printed: which boards, by unique id
 
 
-# A row of "pyocd list": an index, then the probe, then a unique ID, a
-# micro:bit or its target. Not a log line, which also starts with digits
-# ("0000143 C ..." in pyocd 0.45, "0001234:CRITICAL:..." before it).
-_PROBE_ROW = re.compile(r"^\s*\d+\s+\S.*(?:[0-9a-f]{8,}|micro:bit|cmsis-dap|0d28|"
-                        + TARGET + ")", re.I)
+# A row of "pyocd list" that is a micro:bit: an index, then a DAPLink probe
+# (CMSIS-DAP, vendor 0d28) or the board name or its target. Any probe row
+# used to count -- a Segger J-Link on the lecturer's Mac was "probe
+# detected", and the flash would have gone to it -- so the row has to say
+# micro:bit in some way; a J-Link is reported as what it is instead. Not a
+# log line, which also starts with digits ("0000143 C ..." in pyocd 0.45,
+# "0001234:CRITICAL:..." before it).
+_PROBE_ROW = re.compile(r"^\s*\d+\s+\S.*(?:micro:bit|cmsis-dap|daplink|0d28|" + TARGET + ")", re.I)
+_ANY_PROBE_ROW = re.compile(r"^\s*\d+\s+\S")
 _LOG_LINE = re.compile(r"^\s*\d+(?:\s[A-Z]\s|:[A-Z]+:)")
 
 
 def _probe_rows(out: str) -> list[str]:
     return [l for l in out.splitlines() if _PROBE_ROW.match(l) and not _LOG_LINE.match(l)]
+
+
+def _other_probe_rows(out: str) -> list[str]:
+    """Probe rows that are not a micro:bit: a J-Link, an ST-Link, ..."""
+    return [l.strip() for l in out.splitlines()
+            if _ANY_PROBE_ROW.match(l) and not _LOG_LINE.match(l) and not _PROBE_ROW.match(l)
+            and not l.strip().startswith("#")]
 
 
 def _tail(out: str, lines: int = 3) -> str:
@@ -662,7 +681,7 @@ def probe_check() -> ProbeCheck:
         else:
             verdict = "no-probe"
         if first is None:
-            first = ProbeCheck(verdict, exe, rc, _tail(out), tuple(cands))
+            first = ProbeCheck(verdict, exe, rc, _tail(out), tuple(cands), out)
     return first or ProbeCheck("no-pyocd", cands[0], 127, "", tuple(cands))
 
 
@@ -689,12 +708,12 @@ def cannot_flash_hint(check: ProbeCheck) -> None:
         print("\nmb: built fine, but pyocd does not run on this machine, so it "
               "cannot flash.\n"
               + evidence +
-              "    Reinstall it with:  python3 tools/mb.py setup\n"
+              "    Reinstall it with:  python3 mb.py setup\n"
               + browser)
         return
     if state == "no-pyocd":
         print("\nmb: built fine, but pyocd is not installed here, so it cannot flash.\n"
-              "    Install it with:  python3 tools/mb.py setup\n"
+              "    Install it with:  python3 mb.py setup\n"
               + browser)
         return
     if state == "denied":
@@ -703,18 +722,20 @@ def cannot_flash_hint(check: ProbeCheck) -> None:
               "    Install the udev rule once:\n"
               f"      sudo cp {rel(UDEV_RULE)} /etc/udev/rules.d/\n"
               "      sudo udevadm control --reload-rules && sudo udevadm trigger\n"
-              "    Then unplug and replug the board.  Or: python3 tools/mb.py setup\n"
+              "    Then unplug and replug the board.  Or: python3 mb.py setup\n"
               + browser)
         return
     if in_container():
         print("\nmb: built fine, but there is no USB access in a Codespace.\n"
-              "    Ctrl+Shift+B flashes through the micro:bit flasher extension in your\n"
+              "    Ctrl+F5 flashes through the micro:bit flasher extension in your\n"
               "    browser; if it ran this task instead, the extension is not installed\n"
               "    there: Extensions view, AIUnderstand.microbit-flasher, Install.\n"
               + browser)
         return
+    others = _other_probe_rows(check.listing)
     print("\nmb: built fine, but no micro:bit is visible.\n"
-          "    Check the cable carries data -- some only carry power -- and that the\n"
+          + ("    pyocd sees another probe, not a micro:bit: " + others[0][:80] + "\n" if others else "")
+          + "    Check the cable carries data -- some only carry power -- and that the\n"
           "    board appears as a MICROBIT drive.  Then try again.\n"
           + evidence + browser)
 
@@ -778,7 +799,7 @@ def cmd_boards(args) -> int:
         run([str(_venv_python()), "-m", "pip", "install", "--quiet", "pyserial"], quiet=True)
         py = _python_with_pyserial()
     if not py:
-        print(json.dumps({"event": "error", "message": "pyserial is not installed. Run:  python3 tools/mb.py setup"}))
+        print(json.dumps({"event": "error", "message": "pyserial is not installed. Run:  python3 mb.py setup"}))
         return 1
     return run([py, str(BRIDGE), "--watch" if args.watch else "--list"], quiet=True)
 
@@ -1355,11 +1376,10 @@ def _offer_path(args) -> None:
     if shutil.which("alr"):
         return
     if os.name != "nt":
+        # Nothing here needs it: builds go through Alire, the language server
+        # gets its toolchain from build/als.cgpr. This is for typing "alr".
         print(f"           to type 'alr' yourself, add to your shell profile:")
         print(f'             export PATH="$PATH:{bindir}"')
-        return
-    if not _ask(args, "Add alr to your PATH, so VS Code and you can find it?"):
-        print(f"           later, add this to PATH by hand: {bindir}")
         return
     # setx truncates at 1024 characters and expands %VARIABLES%; the .NET call
     # does neither.
@@ -1376,18 +1396,19 @@ def _offer_path(args) -> None:
 
 
 def _ask(args, question: str) -> bool:
-    """Ask before installing anything.
+    """Whether to go ahead with an install or a system setting.
 
-    Detection can be wrong -- a tool may be installed somewhere this script does
-    not look -- so it must never install over the top of something silently.
+    Yes, unless told otherwise: "python mb.py setup" is meant to be the whole
+    installation, with no questions, on a machine the student may not know
+    well. --ask brings the questions back for the case where detection is
+    wrong (a tool installed somewhere this script does not look), and
+    --no-install-tools reports git and VS Code instead of installing them.
     """
-    if args.no_install_tools:
+    if getattr(args, "no_install_tools", False):
         return False
-    if args.yes:
+    if not getattr(args, "ask", False) or not sys.stdin.isatty():
+        print(f"           {question} -- yes (run with --ask to be asked)")
         return True
-    if not sys.stdin.isatty():
-        print("           (not a terminal: re-run with --yes to install automatically)")
-        return False
     try:
         return input(f"           {question} [Y/n] ").strip().lower() in ("", "y", "yes")
     except (EOFError, KeyboardInterrupt):
@@ -1657,6 +1678,15 @@ def cmd_setup(args) -> int:
     """
     ok = True
     print(f"Setting up {rel(REPO)}\n")
+    if in_container():
+        # A Codespace or devcontainer: the image has alr and the toolchain,
+        # there is no USB, and udev and VS Code extensions belong to the host.
+        # What is left is checking, and the language server's configuration.
+        print("  note     a container: no USB here, so pyocd, udev and extensions are skipped")
+        args.no_pyocd = True
+    elif is_wsl():
+        print("  note     WSL: USB devices reach Linux only through usbipd on the Windows side")
+        print("           (usbipd bind / attach); until then, flash from Windows or the browser")
 
     # 1. Python -----------------------------------------------------------
     v = sys.version_info
@@ -1765,8 +1795,10 @@ def cmd_setup(args) -> int:
     # flash, with a message about Codespaces. No board is needed to check it:
     # "pyocd list" exercises the whole USB stack and reports zero probes.
     if not args.no_pyocd:
-        if os.path.sep not in pyocd_path():
-            info("installing pyocd (for flashing and debugging from this machine)")
+        # Ours, with pyserial next to it for the Serial view's boards: a pyocd
+        # found elsewhere on the machine flashes fine but lists no boards.
+        if os.path.sep not in pyocd_path() or not _python_with_pyserial():
+            info("installing pyocd and pyserial (flashing, debugging and the Serial view from this machine)")
             _install_pyocd()
         problem = _pyocd_problem()
         if problem is None:
@@ -1791,7 +1823,8 @@ def cmd_setup(args) -> int:
         return 1
     print("Setup complete. Checking:\n")
     cmd_doctor(args)
-    print("\nNext: open this folder in VS Code and press Ctrl+Shift+B.")
+    print("\nNext: open this folder in VS Code. Ctrl+Shift+B builds, Ctrl+F5 builds and")
+    print("flashes, F5 builds, flashes and debugges with breakpoints.".replace("debugges", "debugs"))
     return 0
 
 
@@ -1819,7 +1852,7 @@ def cmd_doctor(args) -> int:
     if ALS_CGPR.is_file():
         print(f"  OK       language server configuration: {rel(ALS_CGPR)}")
     else:
-        print(f"  missing  language server configuration -- run: python3 tools/mb.py als\n"
+        print(f"  missing  language server configuration -- run: python3 mb.py als\n"
               "           (without it the Ada extension needs alr on PATH; red lines and\n"
               "           no Go to Definition otherwise)")
 
@@ -1832,10 +1865,12 @@ def cmd_doctor(args) -> int:
               + (f": {first}" if rc == 0 else ""))
     check = probe_check()
     if check.state == "ok":
-        print(f"  OK       probe detected by {check.exe}")
+        print(f"  OK       micro:bit detected by {check.exe}")
     else:
-        print(f"  missing  no debug probe attached ({check.state})\n"
-              f"           {check.exe} said: {check.said}")
+        others = _other_probe_rows(check.listing)
+        print(f"  missing  no micro:bit attached ({check.state})\n"
+              + (f"           another probe is: {others[0][:80]}\n" if others else "")
+              + f"           {check.exe} said: {check.said}")
     cli = code_cli()
     if cli and not in_container():
         rc, out = capture([cli, "--list-extensions"])
@@ -1938,8 +1973,9 @@ def main() -> int:
                    help="reinstall the toolchain even if one is present")
     p.add_argument("--no-install-tools", action="store_true",
                    help="never install git or VS Code, only report them")
-    p.add_argument("--yes", "-y", action="store_true",
-                   help="answer yes to install prompts (for unattended runs)")
+    p.add_argument("--ask", action="store_true",
+                   help="ask before each install or system setting (the default is to go ahead)")
+    p.add_argument("--yes", "-y", action="store_true", help=argparse.SUPPRESS)  # the old spelling of the default
     p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("doctor", help="check the toolchain")

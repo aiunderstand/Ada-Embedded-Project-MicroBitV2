@@ -213,7 +213,7 @@ def main() -> int:
 
     say()
     if rc == 0:
-        say("Done. Open the folder in VS Code and press Ctrl+Shift+B:")
+        say("Done. Open the folder in VS Code: Ctrl+Shift+B builds, Ctrl+F5 builds and flashes, F5 debugs.")
         say(f"  cd {dest}")
         say("  code .")
         if shutil.which("code") and yes("\nOpen VS Code there now?"):
@@ -221,7 +221,7 @@ def main() -> int:
     else:
         say("Setup reported a problem above. Fix it, then run:")
         say(f"  cd {dest}")
-        say(f"  {Path(sys.executable).name} tools/mb.py setup")
+        say(f"  {Path(sys.executable).name} mb.py setup")
     return rc
 
 

@@ -50,11 +50,12 @@ The same keys do the same things on your own machine and in a Codespace:
 
 | Key | Does | On your machine | In a Codespace |
 |---|---|---|---|
-| **Ctrl+Shift+B** (Cmd+Shift+B on a Mac) | Build and flash | pyocd, over USB | the micro:bit flasher in your browser; the first time it asks which board |
+| **Ctrl+Shift+B** (Cmd+Shift+B on a Mac) | Build | gprbuild, through Alire | the same, in the Codespace |
+| **Ctrl+F5** | Build and flash | pyocd, over USB | the micro:bit flasher in your browser; the first time it asks which board |
 | **F5** | Build, flash, and debug with breakpoints | pyocd | the flasher, through the companion |
 | **Shift+F5** | Stop debugging | | |
-| **Ctrl+Shift+P** → *Tasks: Run Task* | *Choose project…*, *Build*, *Prove (SPARK)*, *Erase*, *Doctor* | | |
-| status bar, bottom left | **Flash micro:bit** (same as Ctrl+Shift+B) and the chosen project (click to change) | | |
+| **Ctrl+Shift+P** → *Tasks: Run Task* | *Choose project…*, *Build & Flash*, *Prove (SPARK)*, *Erase*, *Doctor* | | |
+| status bar, bottom left | **Flash micro:bit** (same as Ctrl+F5) and the chosen project (click to change) | | |
 
 Serial output (`Put_Line`, 115200 baud) is the **micro:bit › Serial** view
 in the panel, on both paths: it lists the micro:bit v2 boards it can see
@@ -75,23 +76,23 @@ how it works.
 Code/src/main.adb           your program -- this is the file you edit
 Code/itrs.gpr              the project file
 Code/libs/Ada_Drivers_Library   drivers and 46 examples (a git submodule)
-tools/mb.py                build / flash / prove driver
+mb.py, tools/mb.py         the one tool: python mb.py setup | build | flash | prove ...
 ```
 
 Common commands, from the repository root:
 
 ```shell
-python3 tools/mb.py doctor              # is my setup working?
-python3 tools/mb.py list                # what can I build?
-python3 tools/mb.py build               # build your project
-python3 tools/mb.py flash               # build and flash (needs a plugged-in board)
-python3 tools/mb.py build --use ravenscar/music   # build any example
-python3 tools/mb.py prove --use spark/bounded_queue
+python3 mb.py doctor              # is my setup working?
+python3 mb.py list                # what can I build?
+python3 mb.py build               # build your project
+python3 mb.py flash               # build and flash (needs a plugged-in board)
+python3 mb.py build --use ravenscar/music   # build any example
+python3 mb.py prove --use spark/bounded_queue
 ```
 
-In VS Code, **Ctrl+Shift+B** does the common one, and *Tasks: Run Task* has the
-rest — including **Choose project…** for building and flashing any of the 46 examples without
-closing the folder.
+In VS Code, **Ctrl+Shift+B** builds, **Ctrl+F5** builds and flashes, **F5**
+debugs, and *Tasks: Run Task* has the rest — including **Choose project…** for
+building and flashing any of the 46 examples without closing the folder.
 
 ## Examples
 

@@ -109,9 +109,7 @@
     "keybindings": [
       {
         "command": "microbit.flash",
-        "key": "ctrl+shift+b",
-        "mac": "shift+cmd+b",
-        "when": "microbit.usbHost"
+        "key": "ctrl+f5"
       }
     ],
     "viewsContainers": {

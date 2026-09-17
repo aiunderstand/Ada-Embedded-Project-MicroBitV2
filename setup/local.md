@@ -86,10 +86,12 @@ cd YOUR_REPO
 ## 3. Run the setup command
 
 ```shell
-python3 tools/mb.py setup
+python3 mb.py setup
 ```
 
-On Windows, use `python` instead of `python3`.
+On Windows, use `python` instead of `python3`. It asks nothing and installs
+what is missing; `--ask` makes it ask first, `--no-install-tools` makes it
+only report git and VS Code.
 
 That is the whole installation. It:
 
@@ -100,9 +102,14 @@ That is the whole installation. It:
 * fetches the drivers submodule if it is missing;
 * sets the two Windows settings this project needs;
 * installs `pyocd` so you can flash and debug over USB (skip with `--no-pyocd`);
-* installs the VS Code extensions this project recommends, among them the
-  **Serial Monitor** that shows your program's output (when it can find the
-  `code` command; otherwise VS Code offers them when you open the folder);
+* on Windows, puts Alire on your PATH; on Linux, installs the udev rule that
+  lets you open the board (sudo asks for your password);
+* writes the language server's configuration (`build/als.cgpr`), so the Ada
+  extension finds the compiler without anything on PATH;
+* installs the VS Code extensions this project recommends -- the Ada
+  language support, the micro:bit flasher and its companion, Cortex-Debug for
+  F5, and Microsoft's Serial Monitor -- when it can find the `code` command;
+  otherwise VS Code offers them when you open the folder;
 * finishes by checking everything.
 
 **You do not edit `PATH`, and you do not reboot.** Every build runs through
@@ -157,8 +164,9 @@ mb: firmware: build/main.elf, build/main.hex, build/main.bin
 
 Plug in the micro:bit with a **data** USB cable — some cables only carry power.
 
-**Ctrl+Shift+B** already builds *and* flashes. If flashing times out, run the
-**Erase** task (Ctrl+Shift+P → *Tasks: Run Task* → **Erase**) and try again.
+Press **Ctrl+F5**: it builds *and* flashes (Ctrl+Shift+B only builds). If
+flashing times out, run the **Erase** task (Ctrl+Shift+P → *Tasks: Run Task*
+→ **Erase**) and try again.
 
 Flashing needs pyocd, which the setup command in step 3 already installed.
 
@@ -184,9 +192,9 @@ the browser instead:
 plugged in (a v1 shows up too, but cannot be chosen), reads the one you pick,
 and sends what you type. **Show serial** is a real switch: unticked, the port
 is not read at all, which is how you stop a program that floods it. The board
-you pick is also the one Ctrl+Shift+B flashes when several are plugged in.
+you pick is also the one Ctrl+F5 flashes when several are plugged in.
 The view needs the **micro:bit Companion** extension (setup installs it; it
-runs `python3 tools/mb.py boards` next to the board), and only one program
+runs `python3 mb.py boards` next to the board), and only one program
 can hold the port, so close any serial terminal first.
 
 Prefer Microsoft's **Serial Monitor** extension? It works too: choose the
@@ -199,7 +207,7 @@ after the operating system, not the board:
 | macOS | `/dev/cu.usbmodem…` |
 | Linux | `/dev/ttyACM0` (the udev rule from step 6 makes it readable) |
 
-Keep it monitoring: the port survives flashing, so Ctrl+Shift+B keeps working
+Keep it monitoring: the port survives flashing, so Ctrl+F5 keeps working
 next to it. Only one program can hold the port at a time, so close any other
 serial terminal first. Without VS Code, the **serial console** of the
 [browser flasher](https://aiunderstand.github.io/Ada-Embedded-Project-MicroBitV2/)
@@ -207,9 +215,9 @@ serial terminal first. Without VS Code, the **serial console** of the
 
 ## 8. Debug with breakpoints
 
-Set a breakpoint in `main.adb` and press **F5**. The first time, VS Code offers
-to install the **Cortex-Debug** extension — accept. The program stops on the
-line; F5 always debugs whatever you built last. Locally the board is on your own
+Set a breakpoint in `main.adb` and press **F5**: it builds, flashes, and stops
+on that line. (It needs the **Cortex-Debug** extension, which setup installed;
+if VS Code offers it, accept.) F5 always debugs whatever you built last. Locally the board is on your own
 USB port, so stepping is faster than in a Codespace.
 
 Full guide, keys, limits and troubleshooting: **[Debug with
@@ -229,8 +237,7 @@ You do not need to open a different folder. Press **Ctrl+Shift+P**, choose
 *Tasks: Run Task*, then:
 
 * **Choose project…** — pick any of the 46 examples from a list (it is under
-  **Tasks: Run Task**, not Ctrl+Shift+B, which runs *Build & Flash* straight
-  away). The choice sticks: **Build & Flash** and plain **Build** then use it,
+  **Tasks: Run Task**, not Ctrl+Shift+B, which builds straight away). The choice sticks: **Build & Flash** and plain **Build** then use it,
   until you choose **template** again.
 * **Build the file I'm looking at** — builds whichever example the open file
   belongs to.
@@ -238,7 +245,7 @@ You do not need to open a different folder. Press **Ctrl+Shift+P**, choose
 To point Ada go-to-definition and error checking at an example:
 
 ```shell
-python3 tools/mb.py als --use ravenscar/buttons
+python3 mb.py als --use ravenscar/buttons
 ```
 
 ## Troubleshooting
@@ -272,7 +279,7 @@ and you can delete it.
 **Linux: the build fails with `alr not found`, but it works in the terminal.**
 VS Code started from the dock or the applications menu does not inherit the
 PATH your terminal has, so it cannot see a tool you installed into your home
-directory. Run `python3 tools/mb.py setup` once in a terminal where
+directory. Run `python3 mb.py setup` once in a terminal where
 `alr --version` works: it writes down where Alire is, and the tasks then use
 that. Starting VS Code with `code .` from that same terminal also works. The
 **Doctor** task prints the `alr` it resolved, so you can see which one it found.
@@ -283,7 +290,7 @@ into its own environment instead, which needs `python3-venv`:
 
 ```shell
 sudo apt install python3-venv
-python3 tools/mb.py setup
+python3 mb.py setup
 ```
 
 Flashing from the browser needs none of this.
@@ -296,13 +303,13 @@ on Windows) and what that pyocd answered. "pyocd is not installed" and "pyocd
 does not run" are fixed by running setup again. "No micro:bit is visible"
 usually means the cable carries power but not data, so the board never appears
 as a MICROBIT drive. If a `pyocd list` you run yourself does see the board,
-the tool asks that pyocd too and flashes with it; `python3 tools/mb.py doctor`
+the tool asks that pyocd too and flashes with it; `python3 mb.py doctor`
 shows the whole picture.
 
 **Windows: the build works but `alr` is not recognised in a terminal.** Setup
 installs Alire into your user folder rather than editing PATH. It offers to add
 it; if you said no, add this folder to PATH by hand, or just keep using the
-tasks and `python3 tools/mb.py`:
+tasks and `python3 mb.py`:
 `%USERPROFILE%\.local\share\ada-microbit\alr\bin`. Close and reopen VS Code
 afterwards, or it keeps the PATH it started with.
 
@@ -325,15 +332,15 @@ at all, and the page says so rather than failing to connect.
 'workbench.experimental.requestUsbDevice' not found`.** That is the flasher
 extension, which is for the browser, running in desktop VS Code — it is a
 workspace recommendation, so it gets installed on your own machine too. Newer
-versions run the *Build & Flash* task (pyocd) there instead, the same as
-Ctrl+Shift+B: update it in the Extensions view. Its Serial view cannot connect
-on a desktop; the output is in Microsoft's Serial Monitor extension (step 7).
+versions run the *Build & Flash* task (pyocd) there instead, and Ctrl+F5 is
+their key: update it in the Extensions view. Its Serial view works there
+through the micro:bit Companion extension (step 7).
 
 **Flashing times out.** Run the **Erase** task, try a different USB port, and
 check the cable carries data.
 
 **Red lines under every `MicroBit` name, and Go to Definition does nothing.**
-The Ada extension has not found the compiler. Run `python3 tools/mb.py als`
+The Ada extension has not found the compiler. Run `python3 mb.py als`
 (setup does it too), then *Ada: Reload Project* from the command palette or
 restart VS Code. That writes `build/als.cgpr`, which tells the language
 server where the toolchain is without anything on PATH.

@@ -41,29 +41,32 @@ check(JSON.parse(fs.readFileSync(path.join(forced, "package.json"), "utf8")).ver
       "--version must override the version, so CI can publish a monotonic one");
 fs.rmSync(forced, { recursive: true, force: true });
 
-// One key on every path: the flash is bound to VS Code's own build chord,
-// Ctrl+Shift+B, and takes it over only in the browser (when microbit.usbHost);
-// on a desktop the chord falls through to the Build & Flash task.
+// The keys: Ctrl+Shift+B builds (the default build task), Ctrl+F5 builds and
+// flashes, F5 debugs. Ctrl+F5 is VS Code's "run without debugging" chord, taken
+// over on purpose, on both paths: the flash command runs the Build & Flash
+// task on a desktop and flashes over WebUSB in the browser.
 const flashKey = (pkg.contributes.keybindings || []).find((k) => k.command === "microbit.flash");
-check(flashKey && flashKey.key === "ctrl+shift+b" && flashKey.mac === "shift+cmd+b",
-      "flash is bound to the build chord, spelled per platform as VS Code spells it");
-check(flashKey && flashKey.when === "microbit.usbHost",
-      "and only under the browser context, or a desktop would lose its build task");
+check(flashKey && flashKey.key === "ctrl+f5" && !flashKey.mac && !flashKey.when,
+      "flash is bound to ctrl+f5 on every platform, on both paths");
+const tasks = JSON.parse(fs.readFileSync(path.join(root, ".vscode/tasks.json"), "utf8").replace(/^\s*\/\/.*$/gm, ""));
+check(tasks.tasks.some((t) => t.label === "Build" && t.group && t.group.isDefault) && !tasks.tasks.some((t) => t.label !== "Build" && t.group && t.group.isDefault),
+      "Ctrl+Shift+B is the Build task alone: the flash has its own key");
 check(!(pkg.contributes.keybindings || []).some((k) => /alt\+f/i.test(k.key || "")),
       "the old chord is gone from the manifest");
-// A chord VS Code already uses is a regression unless it is shadowed under a
-// context on purpose: the first pick, cmd+alt+f, was Replace on a Mac. VS Code
-// writes modifiers as ctrl, shift, alt, cmd; both spellings are listed so a
-// manifest typo cannot slip past.
+// A chord VS Code already uses is a regression unless it is taken over on
+// purpose, and the purpose is written down here: the first pick, cmd+alt+f,
+// was Replace on a Mac. VS Code writes modifiers as ctrl, shift, alt, cmd;
+// both spellings are listed so a manifest typo cannot slip past.
+const DELIBERATE = { "microbit.flash": "ctrl+f5" }; // run without debugging = flash
 const TAKEN = new Set([
   "cmd+alt+f", "alt+cmd+f",        // Replace (mac)
   "ctrl+h",                        // Replace (win/linux)
   "shift+alt+f",                   // Format Document
   "ctrl+shift+f", "shift+cmd+f", "cmd+shift+f", // Search
-  "ctrl+f", "cmd+f", "alt+f", "f1", "f5",
+  "ctrl+f", "cmd+f", "alt+f", "f1", "f5", "ctrl+f5",
 ]);
 for (const kb of pkg.contributes.keybindings || []) {
-  if (kb.when) continue; // shadowing a default under a context is the point
+  if (DELIBERATE[kb.command] === kb.key) continue;
   for (const chord of [kb.key, kb.mac, kb.win, kb.linux].filter(Boolean)) {
     check(!TAKEN.has(chord.toLowerCase()),
           `keybinding "${chord}" is a VS Code default on some platform`);
@@ -322,7 +325,7 @@ check(withoutDevice.commands.includes("workbench.experimental.requestUsbDevice")
       "with no authorised device, the workbench picker must be used");
 check(withoutDevice.reached >= 1, "the device the picker authorised must then be used");
 check(withDevice.contexts["microbit.usbHost"] === true,
-      "in a browser with WebUSB the flasher claims the build chord (microbit.usbHost)");
+      "in a browser with WebUSB the view's Connect button is offered (microbit.usbHost)");
 
 // ------------------------------------------------------------ desktop VS Code
 // Desktop VS Code loads web extensions too (this one is a workspace
@@ -370,7 +373,7 @@ async function runDesktop({ command = "microbit.flash", tasks = ["Build & Flash"
 }
 const desktopFlash = await runDesktop();
 check(desktopFlash.commands.includes("setContext microbit.usbHost false"),
-      "on a desktop it does not claim the chord: Ctrl+Shift+B stays the Build & Flash task");
+      "on a desktop there is no Connect button: the companion's list replaces it");
 check(desktopFlash.commands.includes("workbench.action.tasks.runTask Build & Flash"),
       "on the desktop the flash runs the Build & Flash task: pyocd has the board there");
 check(!desktopFlash.commands.some((c) => /requestUsbDevice/.test(c)) && !desktopFlash.errors.length,
@@ -707,7 +710,7 @@ check(fresh.executed.includes("workbench.extensions.installExtension AIUnderstan
       "in the browser, with no flasher, the companion asks the workbench to install it");
 check(fresh.result === "installed" && fresh.state["microbit.flasherInstalled"] === true,
       "a successful install is remembered, so it is not repeated on every attach");
-check(fresh.messages.some((m) => /Ctrl\+Shift\+B/.test(m)), "and the student is told what to do next");
+check(fresh.messages.some((m) => /Ctrl\+F5/.test(m)), "and the student is told what to do next");
 const already = await runCompanion({ uiKind: 2, present: true });
 check(already.result === "present" && !already.executed.some((e) => /installExtension/.test(e)),
       "with the flasher present, nothing is installed");
