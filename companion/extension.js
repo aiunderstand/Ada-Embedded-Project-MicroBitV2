@@ -306,7 +306,36 @@ function makeBrowserProbeProvider(ready, {
 // dies; when it cannot start at all (no pyserial yet), its first event says
 // so and the flasher shows that.
 
+// -------------------------------------------- is this a micro:bit project?
+//
+// The flasher tests the same file (extension/extension.js, MARKER) and both
+// manifests activate on workspaceContains:tools/mb.py. The pair has to agree:
+// this end spawns "python3 tools/mb.py boards --watch" in the folder it is
+// given, so pointed at an unrelated repository it spawns a child that cannot
+// exist and respawns it forever, while the other end writes build/board.txt
+// into that same repository. One marker, tested at both ends, closes both.
+const MARKER = "tools/mb.py";
+
+/** The workspace folder holding a copy of this template, or undefined. */
+async function microbitRoot() {
+  for (const folder of vscode.workspace?.workspaceFolders || []) {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.joinPath(folder.uri, ...MARKER.split("/")));
+      return folder.uri;
+    } catch {
+      // not this folder
+    }
+  }
+  return undefined;
+}
+
 const BRIDGE_RESTART_MS = 3000;
+// A bridge that dies the moment it starts will not be cured by starting it
+// again: no pyserial, no python, the wrong folder. Counting those and
+// stopping is what keeps a doomed child from being respawned every three
+// seconds for as long as the window is open.
+const BRIDGE_MIN_RUN_MS = 10000;
+const BRIDGE_MAX_QUICK_EXITS = 5;
 
 function startLocalBoards({
   cwd,
@@ -314,11 +343,16 @@ function startLocalBoards({
   commands = vscode.commands,
   log: logLine = log,
   python = process.platform === "win32" ? "python" : "python3",
+  restartMs = BRIDGE_RESTART_MS,
+  minRunMs = BRIDGE_MIN_RUN_MS,
+  maxQuickExits = BRIDGE_MAX_QUICK_EXITS,
 } = {}) {
   let child = null;
   let stopped = false;
   let boards = [];       // the last list, for a flasher that activates later
   let timer = null;
+  let startedAt = 0;
+  let quickExits = 0;    // consecutive exits too soon to have been a real run
 
   const forward = (id, arg) =>
     commands.executeCommand(id, arg).catch(() => {
@@ -348,6 +382,7 @@ function startLocalBoards({
   const start = () => {
     if (stopped) return;
     let buffer = "";
+    startedAt = Date.now();
     child = spawn(python, ["tools/mb.py", "boards", "--watch"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
     child.stdout.on("data", (chunk) => {
       buffer += chunk.toString();
@@ -363,9 +398,17 @@ function startLocalBoards({
     child.on("exit", (code) => {
       child = null;
       if (stopped) return;
-      logLine(`bridge exited with ${code}; restarting in ${BRIDGE_RESTART_MS / 1000} s`);
+      quickExits = Date.now() - startedAt < minRunMs ? quickExits + 1 : 0;
       forward("microbit.boards.state", { event: "closed", reason: "the bridge stopped" });
-      timer = setTimeout(start, BRIDGE_RESTART_MS);
+      if (quickExits >= maxQuickExits) {
+        const why = `the boards bridge exits immediately (last code ${code}). ` +
+          'Run "python3 mb.py setup", then reload the window.';
+        logLine(`${why} Not restarting it again.`);
+        forward("microbit.boards.state", { event: "error", message: why });
+        return;
+      }
+      logLine(`bridge exited with ${code}; restarting in ${restartMs / 1000} s`);
+      timer = setTimeout(start, restartMs);
     });
   };
 
@@ -392,7 +435,7 @@ function startLocalBoards({
   };
 }
 
-function activate(context) {
+async function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit companion");
   context.subscriptions.push(
     output,
@@ -407,16 +450,23 @@ function activate(context) {
       { dispose: () => relay.server.close() },
       vscode.debug.registerDebugConfigurationProvider("cortex-debug", makeBrowserProbeProvider(relay.ready))
     );
-  } else if (!vscode.env.remoteName && vscode.workspace?.workspaceFolders?.length) {
+  } else if (!vscode.env.remoteName) {
     // A desktop, with the board on this machine: the flasher's Serial view
     // reads it through the bridge below. Attached to a Codespace this host
-    // has no USB either, and there is nothing to run.
-    const local = startLocalBoards({ cwd: vscode.workspace.workspaceFolders[0].uri.fsPath });
-    context.subscriptions.push(
-      local,
-      vscode.commands.registerCommand("microbit.companion.serial", (req) => local.request(req)),
-      vscode.commands.registerCommand("microbit.companion.boards", () => local.boards())
-    );
+    // has no USB either, and there is nothing to run. The bridge runs
+    // mb.py, so it runs in the folder that has one -- never in whatever
+    // repository the student happens to have open.
+    const root = await microbitRoot();
+    if (root) {
+      const local = startLocalBoards({ cwd: root.fsPath });
+      context.subscriptions.push(
+        local,
+        vscode.commands.registerCommand("microbit.companion.serial", (req) => local.request(req)),
+        vscode.commands.registerCommand("microbit.companion.boards", () => local.boards())
+      );
+    } else {
+      log(`no ${MARKER} in this workspace, so there is no board bridge to run here.`);
+    }
   }
   return ensureFlasher(context);
 }
@@ -428,5 +478,5 @@ module.exports = {
   deactivate,
   // For tools/test_companion.mjs.
   _gdb: { startGdbRelay, makeBrowserProbeProvider, explainAttachFailure, rspFrame, GDB_PORT },
-  _local: { startLocalBoards },
+  _local: { startLocalBoards, microbitRoot, MARKER },
 };

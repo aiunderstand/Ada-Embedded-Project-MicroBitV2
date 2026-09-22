@@ -125,9 +125,23 @@ async function settleSelection() {
   postBoards();
 }
 
-/** build/board.txt: the desktop flash (mb.py flash, pyocd -u) follows the view's choice. */
+/**
+ * build/board.txt: the desktop flash (mb.py flash, pyocd -u) follows the
+ * view's choice. Two things it must not do, both learned the hard way.
+ *
+ * With nothing chosen there is nothing to record. A lone newline is not a
+ * choice, and mb.py reads an empty file and a missing one the same way
+ * (chosen_board: an id it cannot see in pyocd's listing is ignored too), so
+ * writing one only creates build/ for no reason. Leaving the last id in
+ * place when a board is unplugged is therefore safe: the reader drops it.
+ *
+ * And outside a copy of this template there is no build/ to write into; the
+ * write would conjure one in somebody else's repository. microbitRoot()
+ * says whether there is a project here at all.
+ */
 async function rememberBoard() {
-  const root = workspaceRoot();
+  if (!selectedId) return;
+  const root = await microbitRoot();
   if (!root) return;
   try {
     await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, "build", "board.txt"),
@@ -452,14 +466,52 @@ const serialViewProvider = {
   },
 };
 
-/** The first workspace folder, or undefined when no folder is open. */
-function workspaceRoot() {
-  const folders = vscode.workspace.workspaceFolders;
-  return folders && folders.length ? folders[0].uri : undefined;
+// -------------------------------------------- is this a micro:bit project?
+//
+// Both extensions activate on workspaceContains:tools/mb.py, so in an
+// unrelated repository neither is loaded at all. That is the cheap half of
+// the guard and not a sufficient one: a command, the Serial view or a
+// cortex-debug session activates us anywhere, and workspaceFolders[0] is
+// then somebody else's project. That is how build/board.txt came to be
+// written into six unrelated repositories on one laptop, each time
+// creating the build/ directory that held it.
+//
+// So nothing here is joined onto "the first folder" any more. It is joined
+// onto the folder that holds the marker, and when no folder does the answer
+// is "not here" and nothing is read or written at all. That also settles a
+// multi-root workspace, where the course need not be folder zero.
+//
+// The marker is the driver every path in this course goes through; the
+// companion tests the same file (companion/extension.js, MARKER).
+const MARKER = "tools/mb.py";
+
+let rootPromise; // asked on demand, then cached: workspace folders change rarely
+
+/** The workspace folder holding a copy of this template, or undefined. */
+function microbitRoot() {
+  if (!rootPromise) rootPromise = findMicrobitRoot();
+  return rootPromise;
+}
+
+async function findMicrobitRoot() {
+  for (const folder of vscode.workspace.workspaceFolders || []) {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.joinPath(folder.uri, ...MARKER.split("/")));
+      return folder.uri;
+    } catch {
+      // not this folder
+    }
+  }
+  return undefined;
+}
+
+/** A folder was added or removed: ask again rather than trust the old answer. */
+function forgetMicrobitRoot() {
+  rootPromise = undefined;
 }
 
 async function hexExists() {
-  const root = workspaceRoot();
+  const root = await microbitRoot();
   if (!root) return false;
   try {
     await vscode.workspace.fs.stat(vscode.Uri.joinPath(root, ...HEX_PATH.split("/")));
@@ -470,7 +522,7 @@ async function hexExists() {
 }
 
 async function readTextIfPresent(relPath) {
-  const root = workspaceRoot();
+  const root = await microbitRoot();
   if (!root) return "";
   try {
     const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...relPath.split("/")));
@@ -481,9 +533,12 @@ async function readTextIfPresent(relPath) {
 }
 
 async function readHex() {
-  const root = workspaceRoot();
+  const root = await microbitRoot();
   if (!root) {
-    throw new Error("No folder is open.");
+    throw new Error(
+      `No micro:bit project is open: no folder here has ${MARKER}. Open the ` +
+        "folder you made from the course template."
+    );
   }
   const uri = vscode.Uri.joinPath(root, ...HEX_PATH.split("/"));
   let bytes;
@@ -1017,6 +1072,10 @@ function activate(context) {
     vscode.window.registerWebviewViewProvider(SERIAL_VIEW, serialViewProvider,
       { webviewOptions: { retainContextWhenHidden: true } })
   );
+  // A folder added or removed can make this a micro:bit project, or stop it
+  // being one; the cached answer must not outlive that.
+  const folders = vscode.workspace.onDidChangeWorkspaceFolders?.(forgetMicrobitRoot);
+  if (folders) context.subscriptions.push(folders);
 
   // Reconnect silently if the board was authorised earlier in this browser, so
   // the device picker appears once ever rather than once per session, and serial
@@ -1083,6 +1142,7 @@ module.exports = {
     setConnection: (c) => { connection = c; },
   },
   _boards: { boardVersion, boardLabel, list: () => boards, selected: () => selectedId, reading: () => reading },
+  _workspace: { MARKER, root: microbitRoot, forget: forgetMicrobitRoot },
   _debug: {
     setSession: (s) => { gdb = s; },
   },

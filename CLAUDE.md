@@ -243,6 +243,28 @@ view sat at "Not connected" while the extension posted into it. Write `\\n`
 there, and run the view's script for real: `tools/test_extension.mjs` parses
 it, and the `verify-ui` skill drives the HTML in Chromium.
 
+**Neither extension may do anything outside a copy of this template.** Both
+activated on `onStartupFinished`, so both loaded in *every* workspace the
+student ever opened. The flasher's `rememberBoard()` then wrote
+`<workspaceFolders[0]>/build/board.txt` -- guarded only by "is a folder
+open" -- and `settleSelection()` calls it even when nothing is chosen, so it
+wrote a lone newline and **created `build/` to hold it** in six unrelated
+repositories on one laptop; in one of them a later `git add .` committed and
+pushed the junk file. Meanwhile the companion spawned
+`python3 tools/mb.py boards --watch` in that same folder, where no `mb.py`
+exists, and `BRIDGE_RESTART_MS` respawned the doomed child every three
+seconds for as long as the window was open (38 spawns in 250 ms once the
+delay is removed -- that is the test). The fix is one marker, `tools/mb.py`,
+tested at three depths: `workspaceContains:tools/mb.py` in both manifests, so
+in an unrelated repository neither extension is loaded; `microbitRoot()` in
+both, because a command, the Serial view or a cortex-debug session still
+activates them anywhere -- and it returns *the folder that holds the marker*,
+not folder zero, which is also what makes a multi-root workspace work; and
+`rememberBoard()` bailing on `!selectedId`, since an empty choice is not one
+(`chosen_board()` already ignores an id pyocd cannot see, so leaving a stale
+id is the safe direction). The bridge now also gives up after five exits too
+quick to have been a real run, rather than trusting the marker alone.
+
 **Check a new keybinding against VS Code's defaults, per platform.** The
 extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
 as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord

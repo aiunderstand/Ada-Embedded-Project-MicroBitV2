@@ -34,6 +34,16 @@ check(pkg.browser && !pkg.main,
 check(pkg.repository && /^https:\/\/github\.com\/[^/]+\/[^/]+\.git$/.test(pkg.repository.url),
       "repository must be a GitHub URL (vsce fills the Marketplace links from it)");
 check(!("private" in pkg), "no 'private' flag: it is published");
+// The activation guard. "onStartupFinished" loaded this extension in every
+// workspace a student ever opened, and it wrote build/board.txt into six
+// unrelated repositories from there. workspaceContains: is a path, not a
+// glob, so the workbench answers it with a stat and nothing loads elsewhere.
+check((pkg.activationEvents || []).includes("workspaceContains:tools/mb.py"),
+      "the flasher activates on workspaceContains:tools/mb.py, not in every workspace");
+check(!(pkg.activationEvents || []).includes("onStartupFinished"),
+      "and not on onStartupFinished, which is what loaded it everywhere");
+check((pkg.activationEvents || []).includes("onDebugResolve:cortex-debug"),
+      "onDebugResolve stays: F5 must reach the provider inside the gesture window");
 check(pkg.version === srcPkg.version, "without --version the source version is used");
 const forced = fs.mkdtempSync(path.join(os.tmpdir(), "ext-v-"));
 execFileSync("python3", ["tools/mb.py", "extension", "--out", forced, "--version", "0.1.4242"], { cwd: root, stdio: "pipe" });
@@ -406,7 +416,7 @@ check(/micro:bit v2 · 9901 \(COM3\)/.test(boardsApi.boardLabel({ id: "990436020
 check(/not supported/.test(boardsApi.boardLabel({ id: "99000001", version: "v1" })), "a v1 says it is not supported");
 
 const usbDevice = (serial, opened) => ({ ...fakeDevice(opened), serialNumber: serial });
-async function runBoards({ uiKind = 2, devices = [], companionBoards = [] }) {
+async function runBoards({ uiKind = 2, devices = [], companionBoards = [], marker = true }) {
   const posted = [], executed = [], written = [], usbListeners = {}, handlers = {}, reached = [];
   let viewHandler = null, provider = null;
   const vs = {
@@ -424,7 +434,11 @@ async function runBoards({ uiKind = 2, devices = [], companionBoards = [] }) {
       },
     },
     workspace: { workspaceFolders: [{ uri: { path: "/ws" } }],
-                 fs: { stat: async () => ({}), readFile: async () => { throw new Error("missing"); },
+                 onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
+                 // The marker (tools/mb.py) is what says this workspace is a
+                 // copy of the template; without it nothing may be touched.
+                 fs: { stat: async (uri) => { if (!marker && /mb\.py$/.test(String(uri.path))) throw new Error("missing"); return {}; },
+                       readFile: async () => { throw new Error("missing"); },
                        writeFile: async (uri, bytes) => { written.push([String(uri.path || uri), new TextDecoder().decode(bytes)]); } } },
     Uri: { joinPath: (base, ...parts) => ({ path: [base.path, ...parts].join("/") }) },
   };
@@ -445,6 +459,26 @@ async function runBoards({ uiKind = 2, devices = [], companionBoards = [] }) {
   const lastBoards = () => [...posted].reverse().find((msg) => msg.type === "boards");
   const send = async (msg) => { await viewHandler(msg); await new Promise((r) => setTimeout(r, 30)); };
   return { posted, executed, written, usbListeners, handlers, reached, lastBoards, send, api: m.exports };
+}
+
+// build/board.txt is written for a real choice, in a real project, and
+// otherwise not at all. Both of these wrote a lone newline before -- and
+// creating build/ to hold it is how six unrelated repositories on one laptop
+// grew a build/ directory they had no use for.
+{
+  const none = await runBoards({ devices: [] });
+  check(!none.written.some(([path]) => /board\.txt$/.test(path)),
+        "no board to record: build/board.txt is not written, so build/ is not created");
+  const v1only = await runBoards({ devices: [usbDevice("9900360200052820ab3ba4b30000000000000000979699aa", [])] });
+  check(!v1only.written.some(([path]) => /board\.txt$/.test(path)),
+        "a v1 alone is not a choice either: still nothing written");
+  const elsewhere = await runBoards({ marker: false,
+    devices: [usbDevice("9904360200052820ab3ba4b3000000000000000097969901", [])] });
+  check(!elsewhere.written.some(([path]) => /board\.txt$/.test(path)),
+        "a workspace with no tools/mb.py is not this course: nothing is written into it");
+  check((await runBoards({ devices: [usbDevice("9904360200052820ab3ba4b3000000000000000097969901", [])] }))
+          .written.some(([path]) => /board\.txt$/.test(path)),
+        "...while the same board in a real project is recorded (the guard is not simply off)");
 }
 
 // The browser: authorised devices, a v1 among them.
@@ -670,7 +704,8 @@ fs.rmSync(out, { recursive: true, force: true });
 // A web extension cannot be installed into a student's browser by anything in
 // a repository -- except an extension already running in the container that
 // asks the workbench to. That is the companion: a plain Node extension,
-// listed in devcontainer.json, which installs the flasher on startup.
+// listed in devcontainer.json, which installs the flasher as soon as it is
+// loaded -- which, in the Codespace for this template, is at startup.
 const cout = fs.mkdtempSync(path.join(os.tmpdir(), "companion-"));
 execFileSync("python3", ["tools/mb.py", "companion", "--out", cout], { cwd: root, stdio: "pipe" });
 const cpkg = JSON.parse(fs.readFileSync(path.join(cout, "package.json"), "utf8"));
@@ -678,7 +713,8 @@ check(cpkg.publisher === "AIUnderstand" && cpkg.name === "microbit-companion", "
 check(cpkg.main && !cpkg.browser, "the companion is a Node extension: it must run in the container");
 check(Array.isArray(cpkg.extensionKind) && cpkg.extensionKind[0] === "workspace",
       "extensionKind workspace, so a Codespace runs it in the container");
-check((cpkg.activationEvents || []).includes("onStartupFinished"), "the companion runs at startup");
+check((cpkg.activationEvents || []).includes("workspaceContains:tools/mb.py"),
+      "the companion runs as soon as a workspace with tools/mb.py opens -- at startup in the Codespace, nowhere else");
 check(/AIUnderstand\.microbit-companion/.test(devcontainer) && !/microbit-flasher/.test(devcontainer.replace(/\/\/.*$/gm, "")),
       "devcontainer.json must list the companion and never the flasher");
 const csrc = fs.readFileSync(path.join(cout, "extension.js"), "utf8");
@@ -728,6 +764,34 @@ check(!desktop.listening.length && !desktop.debugProviders.length, "on the deskt
 check(typeof already.handlers["microbit.companion.ping"] === "function", "the flasher's round-trip check has something to call");
 check((cpkg.contributes.commands || []).some((c) => c.command === "microbit.companion.ping"),
       "the ping is a contributed command, so a call from the browser activates the companion if needed");
+
+// The pair: one marker, the same one, guarding both ends. The companion
+// spawns "python3 tools/mb.py boards --watch" in the folder it is given, so
+// in an unrelated repository it respawned a child that could not exist every
+// three seconds; the flasher wrote board.txt into that same repository.
+check((cpkg.activationEvents || []).includes("workspaceContains:tools/mb.py") &&
+      !(cpkg.activationEvents || []).includes("onStartupFinished"),
+      "the companion activates on the same marker as the flasher, not in every workspace");
+check(/tools\/mb\.py/.test(csrc) && /MARKER/.test(csrc),
+      "and tests it again at runtime, since a command or a debug session can activate it anywhere");
+{
+  // The marker decides which folder, not workspaceFolders[0]: in a multi-root
+  // workspace the course need not be the first folder.
+  const folders = [{ uri: { path: "/other", fsPath: "/other" } }, { uri: { path: "/course", fsPath: "/course" } }];
+  const withFs = (list) => ({
+    workspaceFolders: list,
+    fs: { stat: async (uri) => { if (!/^\/course\//.test(String(uri.path))) throw new Error("missing"); return {}; } },
+  });
+  const cvs = { ...vscode, workspace: withFs(folders),
+                Uri: { joinPath: (base, ...parts) => ({ path: [base.path, ...parts].join("/"), fsPath: base.fsPath }) } };
+  const cm = { exports: {} };
+  new Function("require", "module", "exports", csrc)((n) => (n === "vscode" ? cvs : { createServer: () => ({ listen() {}, on() {}, close() {} }) }), cm, cm.exports);
+  check((await cm.exports._local.microbitRoot())?.fsPath === "/course",
+        "the companion runs the bridge in the folder that has tools/mb.py, not the first folder");
+  cvs.workspace = withFs([{ uri: { path: "/other", fsPath: "/other" } }]);
+  check((await cm.exports._local.microbitRoot()) === undefined,
+        "and in a workspace without it there is no folder to run anything in");
+}
 fs.rmSync(cout, { recursive: true, force: true });
 
 if (fail.length) {

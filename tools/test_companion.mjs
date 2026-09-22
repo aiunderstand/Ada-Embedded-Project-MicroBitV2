@@ -2,6 +2,7 @@
 //  Node built-ins only: a real TCP client plays gdb, a stand-in for
 //  vscode.commands plays the flasher in the browser.
 import child_process from "child_process";
+import { EventEmitter } from "events";
 import fs from "fs";
 import net from "net";
 import os from "os";
@@ -322,9 +323,40 @@ relay.server.close();
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// A bridge that dies the moment it starts is not restarted forever. Before
+// the marker guard this ran in every workspace a student opened, respawning
+// "python3 tools/mb.py boards --watch" every three seconds in repositories
+// that have no mb.py. The guard stops that; this stops the rest of it --
+// a real project whose venv has no pyserial dies just as fast.
+{
+  const deadChild = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { writable: false, write() {}, end() {} };
+    child.kill = () => {};
+    setTimeout(() => child.emit("exit", 1), 0);
+    return child;
+  };
+  let spawned = 0;
+  const logged = [], forwarded = [];
+  const local = startLocalBoards({
+    cwd: "/nowhere", restartMs: 5, minRunMs: 60000, maxQuickExits: 3,
+    commands: { executeCommand: async (id, arg) => { forwarded.push([id, arg]); } },
+    log: (l) => logged.push(l),
+    spawn: () => { spawned += 1; return deadChild(); },
+  });
+  await sleep(250);
+  check(spawned === 3, `a bridge that will not start is tried a few times and then left alone (spawned ${spawned})`);
+  check(logged.some((l) => /Not restarting/.test(l)), "and the companion's output says it gave up");
+  check(forwarded.some(([id, arg]) => id === "microbit.boards.state" && arg.event === "error" && /mb\.py setup/.test(arg.message)),
+        "the Serial view is told what to run, not just that the bridge stopped");
+  local.dispose();
+}
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite, desktop bridge");
+console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite, desktop bridge, bridge gives up");
