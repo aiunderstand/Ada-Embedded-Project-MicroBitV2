@@ -21,6 +21,14 @@ A board is DAPLink's USB serial port, vendor 0x0d28. Its unique id is the
 USB serial number, whose first four digits are the board id: 9900 and 9901
 are a micro:bit v1, 9903 to 9906 a v2. The same string is what pyocd calls
 the probe's unique id, so the flasher's choice serves the flash as well.
+
+A micro:bit can also carry SEGGER's J-Link OB firmware instead of DAPLink:
+vendor 0x1366, product "J-Link", USB serial "000782075388" where pyocd's
+unique id is "782075388" -- so the zeros go, or the choice would not match
+at flash time. Nothing on the USB side says which micro:bit it is, and J-Link
+OB for the v1 exists; it is listed as a v2, the only board this template
+builds for (a v1 then fails at flash, with pyocd saying the target is wrong).
+A Nordic DK's on-board J-Link looks the same and is listed too.
 """
 import argparse
 import json
@@ -29,6 +37,7 @@ import threading
 import time
 
 MICROBIT_VID = 0x0D28
+SEGGER_VID = 0x1366
 BAUD = 115200
 V1_IDS = ("9900", "9901")
 V2_IDS = ("9903", "9904", "9905", "9906")
@@ -47,13 +56,18 @@ def boards_from(ports):
     """The micro:bits among pyserial's ports, as the companion expects them."""
     found = []
     for p in ports:
-        if getattr(p, "vid", None) != MICROBIT_VID:
-            continue
+        vid = getattr(p, "vid", None)
         sn = getattr(p, "serial_number", None) or ""
+        if vid == MICROBIT_VID:
+            uid, version = sn, board_version(sn)
+        elif vid == SEGGER_VID:
+            uid, version = sn.lstrip("0"), "v2"
+        else:
+            continue
         found.append({
-            "id": sn or p.device,
+            "id": uid or p.device,
             "port": p.device,
-            "version": board_version(sn),
+            "version": version,
             "description": getattr(p, "description", "") or "",
         })
     return sorted(found, key=lambda b: b["id"])

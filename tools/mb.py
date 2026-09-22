@@ -619,10 +619,13 @@ class ProbeCheck(NamedTuple):
 # (CMSIS-DAP, vendor 0d28) or the board name or its target. Any probe row
 # used to count -- a Segger J-Link on the lecturer's Mac was "probe
 # detected", and the flash would have gone to it -- so the row has to say
-# micro:bit in some way; a J-Link is reported as what it is instead. Not a
-# log line, which also starts with digits ("0000143 C ..." in pyocd 0.45,
-# "0001234:CRITICAL:..." before it).
-_PROBE_ROW = re.compile(r"^\s*\d+\s+\S.*(?:micro:bit|cmsis-dap|daplink|0d28|" + TARGET + ")", re.I)
+# micro:bit in some way; a J-Link is reported as what it is instead. A
+# micro:bit whose interface chip runs SEGGER's J-Link OB firmware instead of
+# DAPLink is one, and says so without the colon: "Segger
+# J-Link-OB-BBC-microbit", target n/a (pyocd drives it through pylink and
+# SEGGER's J-Link software). Not a log line, which also starts with digits
+# ("0000143 C ..." in pyocd 0.45, "0001234:CRITICAL:..." before it).
+_PROBE_ROW = re.compile(r"^\s*\d+\s+\S.*(?:micro:?bit|cmsis-dap|daplink|0d28|" + TARGET + ")", re.I)
 _ANY_PROBE_ROW = re.compile(r"^\s*\d+\s+\S")
 _LOG_LINE = re.compile(r"^\s*\d+(?:\s[A-Z]\s|:[A-Z]+:)")
 
@@ -753,6 +756,13 @@ def no_probe_hint() -> None:
     cannot_flash_hint(probe_check())
 
 
+# A micro:bit running J-Link OB firmware: without the device name pyocd drives
+# the J-Link as a generic Cortex-M4, and its flash algorithm faults in RAM
+# ("Memory transfer fault @ 0x20002000") or it cannot halt the core. A DAPLink
+# never reads the option, so it is always passed.
+JLINK_DEVICE = ["-O", "jlink.device=NRF52833_XXAA"]
+
+
 def cmd_flash(args) -> int:
     if not args.no_build:
         rc = cmd_build(args)
@@ -767,7 +777,7 @@ def cmd_flash(args) -> int:
         return 0
     # With several boards plugged in, the flasher's choice decides which.
     board = chosen_board(check.listing)
-    rc = alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf"]
+    rc = alr_exec([pyocd_path(), "load", "-t", TARGET, "--format", "elf"] + JLINK_DEVICE
                   + (["-u", board] if board else []) + [rel(elf)])
     if rc == 0:
         info("serial output: VS Code's Serial Monitor extension (Microsoft), "
@@ -832,7 +842,7 @@ def cmd_erase(args) -> int:
     if check.state != "ok":
         cannot_flash_hint(check)
         return 0
-    return alr_exec([pyocd_path(), "erase", "--mass", "-t", TARGET])
+    return alr_exec([pyocd_path(), "erase", "--mass", "-t", TARGET] + JLINK_DEVICE)
 
 
 def proof_gpr(gpr: Path) -> Path:

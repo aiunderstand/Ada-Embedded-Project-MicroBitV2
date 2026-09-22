@@ -115,6 +115,10 @@ check(c.state == "no-probe" and "J-Link" in hint and "not a micro:bit" in hint,
       f"a J-Link alone is no micro:bit, and the hint names it (got {c.state}: {hint!r})")
 c, hint = verdict([V], {V: (0, JLINK + "  1   Arm DAPLink CMSIS-DAP   9904360200052820   n/a\n      micro:bit v2\n")})
 check(c.state == "ok", "a micro:bit next to a J-Link is found")
+# ... but a micro:bit running J-Link OB firmware instead of DAPLink is one
+# (pyocd 0.45 on a real board; the name has no colon, the target is n/a).
+c, hint = verdict([V], {V: (0, "  0   Segger J-Link-OB-BBC-microbit   782075388   n/a\n")})
+check(c.state == "ok", f"a micro:bit with J-Link OB firmware is a micro:bit (got {c.state}: {hint!r})")
 
 # The Windows case: the board is in the output, whatever the exit code says.
 c, hint = verdict([V], {V: (1, WINDOWS)})
@@ -250,6 +254,13 @@ ports = [Port("COM3", 0x0D28, V2), Port("COM4", 0x0D28, "9900000012345678"), Por
 listed = bridge.boards_from(ports)
 check([b["version"] for b in listed] == ["v1", "v2"] and listed[1]["port"] == "COM3",
       f"micro:bits are told apart by the board id in the serial number; other devices are not listed (got {listed})")
+# J-Link OB on the board: SEGGER's vendor id, and the USB serial carries zeros
+# that pyocd's unique id does not -- the id must be pyocd's, or the choice
+# written to build/board.txt never matches at flash time.
+jl = bridge.boards_from([Port("/dev/cu.usbmodem0007820753881", 0x1366, "000782075388")])
+check(jl == [{"id": "782075388", "port": "/dev/cu.usbmodem0007820753881", "version": "v2",
+              "description": "USB Serial Device"}],
+      f"a J-Link OB micro:bit is listed as a v2, by pyocd's unique id (got {jl})")
 class FakePort:
     made = []
     def __init__(self, port, baud, timeout):

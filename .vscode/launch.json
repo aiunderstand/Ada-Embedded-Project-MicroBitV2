@@ -17,6 +17,10 @@
             "executable": "${workspaceFolder}/build/main.elf",
             "servertype": "pyocd",
             "targetId": "nrf52833",
+            // For a micro:bit running J-Link OB firmware instead of DAPLink:
+            // without it pyocd drives the J-Link as a generic Cortex-M4 and
+            // loads at a seventh of the speed. A DAPLink ignores it.
+            "serverArgs": ["-O", "jlink.device=NRF52833_XXAA"],
             "preLaunchTask": "Build",
             "showDevDebugOutput": "vscode"
             // "runToEntryPoint": "main"  // uncomment to break on start
