@@ -136,6 +136,14 @@
       <li>Close anything else holding the board — a running <code>pyocd</code>, or another tab
           with this page open. WebUSB claims the debug interface exclusively.</li>
     </ul>
+    <h2>If the output is scrambled</h2>
+    <ul>
+      <li>Something else is reading the board's serial port — VS Code's micro:bit
+          <em>Serial</em> view, Serial Monitor, <code>screen</code>. The board hands each character
+          to only one reader and the serial port wins most of them, so that program looks almost
+          fine while this page gets fragments. Close it (in VS Code, untick <em>Show serial</em>);
+          this page recovers by itself.</li>
+    </ul>
   </div>
 
   <p style="color:var(--muted); font-size:.875rem; border-top:1px solid var(--line); padding-top:1rem">

@@ -90,6 +90,7 @@ let boards = [];        // {id, version, port?, device?} -- device in the browse
 let selectedId = null;  // the board the view chose
 let reading = true;     // the view's "Show serial" box: read the port, or leave it alone
 let boardNote = "";     // the desktop bridge's last word (opened, closed, an error)
+let portAsked = null;   // a desktop: the board whose port the bridge holds, or was asked to
 
 const isBrowser = () => vscode.env.uiKind === vscode.UIKind.Web && usbAvailable();
 
@@ -117,11 +118,8 @@ async function settleSelection() {
     const first = boards.find((b) => b.version === "v2");
     selectedId = first ? first.id : null;
     await rememberBoard();
-    if (selectedId && !isBrowser() && reading && !connected) {
-      // A desktop: a newly picked board is read at once, as the view says.
-      await bridge({ op: "open", id: selectedId }).catch((err) => { boardNote = err.message; });
-    }
   }
+  await syncPort();
   postBoards();
 }
 
@@ -176,8 +174,8 @@ async function selectBoard(id) {
       if (!liveConnection()) {
         await connectTo(board.device);
       }
-    } else if (reading) {
-      await bridge({ op: "open", id });
+    } else {
+      await syncPort();
     }
   } catch (err) {
     log(`board ${id.slice(-4)}: ${err.message}`);
@@ -201,15 +199,37 @@ async function setReading(on) {
         usb.removeEventListener("serialdata", onSerialData);
         if (reading) usb.addEventListener("serialdata", onSerialData);
       }
-    } else if (reading && selectedBoard()) {
-      await bridge({ op: "open", id: selectedId });
     } else {
-      await bridge({ op: "close" });
+      await syncPort();
     }
   } catch (err) {
     boardNote = err.message;
   }
   postBoards();
+}
+
+/**
+ * A desktop holds the board's serial port only while the Serial view is on
+ * screen with Show serial ticked. DAPLink has one buffer for the board's UART
+ * and every reader drains it -- this port, the browser flasher's WebUSB
+ * console, Serial Monitor -- so with two of them each gets some of the
+ * characters and neither a whole line. Opening the port at activation, as
+ * this did, scrambled the browser flasher's output whenever VS Code was open
+ * on the project, with the Serial view nowhere in sight.
+ */
+async function syncPort() {
+  if (isBrowser()) return;
+  const board = selectedBoard();
+  const want = reading && serialView && serialView.visible && board && board.version === "v2" ? board.id : null;
+  if (want === portAsked) return;
+  portAsked = want;
+  try {
+    await bridge(want ? { op: "open", id: want } : { op: "close" });
+  } catch (err) {
+    portAsked = null;
+    boardNote = err.message;
+    postBoards();
+  }
 }
 
 const onSerialData = ({ data }) => serialReceived(data);
@@ -237,13 +257,19 @@ function cmdSerialReceived(text) {
 
 function cmdBoardsState(ev) {
   if (!ev) return;
+  // The bridge's word is what holds the port, whatever was asked: a port it
+  // closed by itself (unplugged, a read that failed) is not reopened until
+  // something changes, or two readers would take turns at it forever.
   if (ev.event === "opened") {
+    portAsked = ev.id;
     boardNote = "";
     setConnected(true);
   } else if (ev.event === "closed") {
+    portAsked = null;
     boardNote = ev.reason ? `${ev.reason}` : "";
     setConnected(false);
   } else if (ev.event === "error") {
+    if (ev.id) portAsked = null; // an open that failed: nothing is held
     boardNote = ev.message || "error";
     postBoards();
   }
@@ -460,9 +486,13 @@ const serialViewProvider = {
         setReading(m.on);
       }
     });
+    // On a desktop the port follows the view: read while it is on screen.
+    view.onDidChangeVisibility(() => syncPort());
     view.onDidDispose(() => {
       if (serialView === view) serialView = null;
+      syncPort();
     });
+    syncPort();
   },
 };
 
@@ -1101,7 +1131,6 @@ function activate(context) {
         // The companion may be up already, with the list; otherwise it will send it.
         const list = await vscode.commands.executeCommand("microbit.companion.boards");
         if (Array.isArray(list)) await cmdBoardsUpdate(list);
-        if (reading && selectedBoard()) await bridge({ op: "open", id: selectedId });
       }
     } catch (err) {
       log(`(boards: ${err.message})`);

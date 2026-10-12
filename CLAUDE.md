@@ -265,6 +265,27 @@ not folder zero, which is also what makes a multi-root workspace work; and
 id is the safe direction). The bridge now also gives up after five exits too
 quick to have been a real run, rather than trusting the marker alone.
 
+**DAPLink gives each serial byte to one reader.** The board's UART has one
+buffer, drained alike by the USB serial port (pyserial, Serial Monitor,
+`screen`) and by the CMSIS-DAP vendor command `0x83` that WebUSB consoles
+poll; whoever asks first gets the byte. The port wins most of them, so the
+serial monitor looks fine while the browser page shows a scatter of the right
+characters (`ACC;X,-95;Y,-41` came out as `YC;C2C2C;C9X`). The vendored
+library knows: before a flash it runs a stub on the target that pushes 2 KB
+through the UART to fill DAPLink's USB-serial buffer (`cdcSaturated`), after
+which that path takes nothing -- unless a program on the host is draining the
+port, which is why the page's first lines after a flash were whole. From
+`2755481` the desktop flasher had the companion's bridge open the port at
+activation and keep it, Serial view on screen or not, so the GitHub Pages
+flasher's output was scrambled whenever VS Code was open on the project. A
+port merely held open is enough: the OS keeps reading it. The port now
+follows the view (`syncPort()` in `extension.js`), and one the bridge closed
+by itself is not reopened until something changes, or two readers would take
+turns at it forever. Reproduced on a board with the
+page's own bundle over node-usb's `WebUSB`: 28/28 lines whole alone; with a
+pyserial reader on the port, 65 bytes in 3 s and no whole line, while the
+reader got 657 bytes, a few characters short.
+
 **Check a new keybinding against VS Code's defaults, per platform.** The
 extension's first chord, `cmd+alt+f`, is *Replace* on a Mac; VS Code writes it
 as `alt+cmd+f` (modifier order ctrl, shift, alt, cmd), so a grep for the chord
@@ -337,7 +358,8 @@ A Codespace has **no USB**. Five consequences:
    the same string pyocd calls the unique id, so the view's choice
    (`build/board.txt`) is what `mb.py flash -u` flashes. **Show serial** is
    not cosmetic: the library polls DAPLink only while a `serialdata` listener
-   exists, so the listener comes and goes; the bridge closes the port. In the
+   exists, so the listener comes and goes; the bridge closes the port, and
+   holds it only while the view is on screen (see the DAPLink trap). In the
    browser the list is `navigator.usb.getDevices()` kept fresh by WebUSB's
    connect/disconnect events, and the picker adds a board to it. Microsoft's
    Serial Monitor remains a recommended alternative; `mb.py setup` installs

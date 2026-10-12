@@ -221,6 +221,7 @@ const fakeView = {
              postMessage(m) { posted.push(m); },
              onDidReceiveMessage(cb) { onMessage = cb; return { dispose() {} }; } },
   onDidDispose(cb) { onDispose = cb; return { dispose() {} }; },
+  visible: true, onDidChangeVisibility() { return { dispose() {} }; },
   shown: [], show(p) { this.shown.push(p); },
 };
 mod.exports._serial.received("boot line\n");                 // before the view exists
@@ -416,7 +417,7 @@ check(/micro:bit v2 · 9901 \(COM3\)/.test(boardsApi.boardLabel({ id: "990436020
 check(/not supported/.test(boardsApi.boardLabel({ id: "99000001", version: "v1" })), "a v1 says it is not supported");
 
 const usbDevice = (serial, opened) => ({ ...fakeDevice(opened), serialNumber: serial });
-async function runBoards({ uiKind = 2, devices = [], companionBoards = [], marker = true }) {
+async function runBoards({ uiKind = 2, devices = [], companionBoards = [], marker = true, viewLater = false }) {
   const posted = [], executed = [], written = [], usbListeners = {}, handlers = {}, reached = [];
   let viewHandler = null, provider = null;
   const vs = {
@@ -451,14 +452,21 @@ async function runBoards({ uiKind = 2, devices = [], companionBoards = [], marke
     (n) => { if (n === "vscode") return vs; throw new Error("unknown " + n); }, m, m.exports, nav);
   m.exports.activate({ subscriptions: [] });
   await new Promise((r) => setTimeout(r, 30));
+  let visibilityChanged = () => {};
   const view = { webview: { options: {}, html: "", cspSource: "x", postMessage: (msg) => { posted.push(msg); },
-                            onDidReceiveMessage: (fn) => { viewHandler = fn; } }, onDidDispose() {}, show() {} };
-  provider.resolveWebviewView(view);
-  viewHandler({ type: "ready" });
-  await new Promise((r) => setTimeout(r, 30));
+                            onDidReceiveMessage: (fn) => { viewHandler = fn; } }, onDidDispose() {}, show() {},
+                 visible: true, onDidChangeVisibility: (fn) => { visibilityChanged = fn; return { dispose() {} }; } };
+  // The Serial view is resolved the first time it is on screen, which may be never.
+  const resolve = async () => {
+    provider.resolveWebviewView(view);
+    viewHandler({ type: "ready" });
+    await new Promise((r) => setTimeout(r, 30));
+  };
+  if (!viewLater) await resolve();
+  const setVisible = async (on) => { view.visible = on; await visibilityChanged(); await new Promise((r) => setTimeout(r, 30)); };
   const lastBoards = () => [...posted].reverse().find((msg) => msg.type === "boards");
   const send = async (msg) => { await viewHandler(msg); await new Promise((r) => setTimeout(r, 30)); };
-  return { posted, executed, written, usbListeners, handlers, reached, lastBoards, send, api: m.exports };
+  return { posted, executed, written, usbListeners, handlers, reached, lastBoards, send, resolve, setVisible, api: m.exports };
 }
 
 // build/board.txt is written for a real choice, in a real project, and
@@ -551,6 +559,34 @@ async function runBoards({ uiKind = 2, devices = [], companionBoards = [], marke
         "a typed line goes to the bridge");
   r.handlers["microbit.boards.state"]({ event: "closed", id: A, reason: "unplugged" });
   check(r.lastBoards().connected === false && /unplugged/.test(r.lastBoards().note), "an unplugged board is reported as such");
+}
+
+// A desktop holds the port only while the Serial view is on screen. DAPLink
+// has one UART buffer and every reader drains it, so a port held by a VS Code
+// window nobody was looking at scrambled the browser flasher's output: each
+// got some of the characters and neither a whole line.
+{
+  const A = "9904360200052820ab3ba4b3000000000000000097969901";
+  const opens = (r) => r.executed.filter(([id, arg]) => id === "microbit.companion.serial" && arg.op === "open").length;
+  const closes = (r) => r.executed.filter(([id, arg]) => id === "microbit.companion.serial" && arg.op === "close").length;
+  const r = await runBoards({ uiKind: 1, viewLater: true, companionBoards: [{ id: A, version: "v2", port: "COM3" }] });
+  await r.handlers["microbit.boards.update"]([{ id: A, version: "v2", port: "COM3" }]);
+  await new Promise((res) => setTimeout(res, 30));
+  check(opens(r) === 0, "with the Serial view never opened, the board's port is left alone");
+  await r.resolve();
+  check(opens(r) === 1, "opening the Serial view opens the port");
+  r.handlers["microbit.boards.state"]({ event: "opened", id: A });
+  await r.handlers["microbit.boards.update"]([{ id: A, version: "v2", port: "COM3" }]);
+  await new Promise((res) => setTimeout(res, 30));
+  check(opens(r) === 1, "a board list that did not change the choice does not reopen it");
+  await r.setVisible(false);
+  check(closes(r) === 1, "the view going off screen (another panel tab, a closed panel) closes the port");
+  r.handlers["microbit.boards.state"]({ event: "closed", id: A });
+  await r.send({ type: "read", on: false });
+  await r.send({ type: "read", on: true });
+  check(opens(r) === 1, "Show serial ticked while the view is off screen still leaves the port alone");
+  await r.setVisible(true);
+  check(opens(r) === 2, "and back on screen it is read again");
 }
 
 // -------------------------------------------------------------- debugging, on the board
