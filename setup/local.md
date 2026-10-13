@@ -272,9 +272,23 @@ alr settings --global --set msys2.do_not_install true
 
 Then run setup again. This project cross-compiles and needs nothing from msys2.
 The setting is per user, not per project, so you only ever do it once — and
-current versions of `mb.py` do it for you before Alire can ask. If an earlier
-attempt left an `msys64` folder in `%USERPROFILE%\.config\alire`, it is unused
-and you can delete it.
+current versions of `mb.py` do it for you before Alire can ask.
+
+**Windows: setup says the toolchain is "installed and selected, but alr cannot
+run" it.** `alr toolchain` lists the compiler, yet nothing builds, in the
+terminal or in VS Code. The usual cause is an MSYS2 that an earlier attempt
+left in `%LOCALAPPDATA%\alire\cache\msys64`, often half installed because it
+was the step that hung. The setting above only stops a *new* install: when
+that folder exists, Alire puts it in front of PATH for every command. This
+project needs nothing from it; setup names the folder when it finds one, and
+deletes it with
+
+```
+python mb.py setup --remove-msys2
+```
+
+If the deletion fails, something from MSYS2 is still running: sign out and
+back in, or delete the folder in Explorer, then run setup again.
 
 **Linux: the build fails with `alr not found`, but it works in the terminal.**
 VS Code started from the dock or the applications menu does not inherit the

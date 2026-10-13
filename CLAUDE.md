@@ -220,6 +220,23 @@ Alire's system package manager -- this project cross-compiles and depends only
 on binary toolchain crates, so it needs nothing from it, which the Windows
 matrix leg proves by building with the flag set from its first command.
 
+**`msys2.do_not_install` does not disarm an MSYS2 that is already there.**
+Alire 2.x (`Platforms.Current.Setup_Msys2`, read in its source) consults the
+setting only when `%LOCALAPPDATA%\alire\cache\msys64` is *missing*; when the
+folder exists -- left by an older setup, or half installed because it was the
+step that hung -- every alr command puts its `usr/bin` in front of PATH, and
+its pacman makes MSYS2 the "distribution". A Windows PC then had the toolchain
+installed and selected while every `alr exec` in the repository failed, and
+setup said *not usable after two tries* and advised re-running the select,
+which only re-marks what is there. The same PC had needed that folder
+deleted by hand for earlier install problems; whether it caused this one is
+not yet confirmed, which is why the verdict now quotes alr. So
+setup checks the two halves apart (`alr toolchain` lists the pair; `alr exec`
+runs it here), quotes alr when the second fails, names the leftover MSYS2
+when there is one, and `setup --remove-msys2` deletes it. The same probe
+also used to download gnatprove silently: `alire.toml` pins it, so a fresh
+clone's first `alr exec` fetches it, and that first run is now shown.
+
 **Alire chatter pollutes version probes.** `alr exec -- gprbuild --version` is
 preceded by `Note: Synchronizing workspace...` and dependency-solve lines that
 *contain digits*. `alr -q` suppresses the command's own output too, so `mb.py`

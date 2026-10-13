@@ -296,6 +296,10 @@ def skip_msys2() -> None:
 
     Sets it once per process rather than reading it back: one extra alr call is
     cheaper than two, and writing it again is harmless.
+
+    It only stops an *install*. An MSYS2 already in Alire's cache -- from an
+    older setup, or one killed while MSYS2 was installing -- is still put in
+    front of PATH by every alr command; see alire_msys2_dir().
     """
     global _msys2_guarded
     if _msys2_guarded or os.name != "nt":
@@ -311,6 +315,58 @@ def skip_msys2() -> None:
         # that can be asked the question.
         return
     _msys2_guarded = True
+
+
+def _msys2_candidate(configured: str, localappdata: str) -> Path:
+    """Where Alire looks for its MSYS2: the msys2.install_dir setting, else
+    <LOCALAPPDATA>/alire/cache/msys64 (Alire's Platforms.Folders.Cache)."""
+    if configured:
+        return Path(configured)
+    return Path(localappdata) / "alire" / "cache" / "msys64"
+
+
+def alire_msys2_dir() -> Path | None:
+    """Alire's own MSYS2, if this Windows machine has one.
+
+    Alire 2.x (Platforms.Current.Setup_Msys2) consults msys2.do_not_install
+    only when that directory is *missing*. When it exists, whole or half
+    installed, every alr command puts its usr/bin in front of PATH -- tar,
+    curl, git and all -- and pacman there makes Alire treat MSYS2 as the
+    system package manager. On one Windows PC that directory had to be
+    deleted by hand before installs worked, and the same PC later had the
+    toolchain selected while every "alr exec" in this folder failed. This
+    project needs nothing from MSYS2, hence "setup --remove-msys2".
+    """
+    if os.name != "nt":
+        return None
+    rc, out = capture(["alr", "settings", "--global", "--get", "msys2.install_dir"])
+    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    configured = lines[-1] if rc == 0 and lines else ""
+    home = Path.home() / "AppData" / "Local"
+    found = _msys2_candidate(configured, os.environ.get("LOCALAPPDATA", str(home)))
+    return found if found.is_dir() else None
+
+
+def remove_tree(path: Path) -> str | None:
+    """Delete a directory tree; None when it is gone, else what stopped it.
+
+    MSYS2 on Windows has read-only files, which plain rmtree refuses, and
+    paths past 260 characters, which the \\\\?\\ prefix lets through.
+    """
+    import stat
+
+    def unlock(func, p, _exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+
+    target = str(path.resolve())
+    if os.name == "nt" and not target.startswith("\\\\?\\"):
+        target = "\\\\?\\" + target
+    try:
+        shutil.rmtree(target, onerror=unlock)
+    except OSError as e:
+        return str(e)
+    return None
 
 
 def _not_found(prog: str) -> str:
@@ -1475,19 +1531,111 @@ def _install_vscode(args) -> bool:
     return False
 
 
-def _toolchain_missing() -> list[str]:
-    """Which of the two toolchain pieces cannot actually be run through alr."""
-    missing = []
+def _toolchain_selected(listing: str | None = None) -> bool:
+    """Does "alr toolchain" list our pinned pair as the default?
+
+    Deliberately not "alr exec": this asks Alire's toolchain store, which
+    needs no workspace. The two can disagree, and which one says no is the
+    diagnosis -- see _toolchain_advice().
+    """
+    if listing is None:
+        _, listing = capture(["alr", "toolchain"])
+    rows = {tuple(l.split()[:3]) for l in listing.splitlines()}
+    return (("gnat_arm_elf", GNAT_VERSION, "Default") in rows
+            and ("gprbuild", GPRBUILD_VERSION, "Default") in rows)
+
+
+def _toolchain_missing() -> tuple[list[str], str]:
+    """Which toolchain pieces cannot actually be run through alr in this
+    workspace, and what alr said about the first that could not."""
+    missing, said = [], ""
     for name, probe in (("gnat_arm_elf", ["arm-eabi-gcc", "-dumpversion"]),
                         ("gprbuild", ["gprbuild", "--version"])):
-        rc, _ = capture(["alr", "exec", "--"] + probe)
+        rc, out = capture(["alr", "exec", "--"] + probe)
         if rc != 0:
             missing.append(name)
-    return missing
+            said = said or out
+    return missing, said
 
 
 def _toolchain_ok() -> bool:
-    return not _toolchain_missing()
+    return not _toolchain_missing()[0]
+
+
+def _sync_workspace() -> tuple[int, str]:
+    """The first "alr exec" here, with its output shown as it comes.
+
+    alire.toml pins gnatprove as well as the compiler, so a fresh clone's
+    first "alr exec" downloads it -- a few hundred MB -- and that used to
+    happen inside a captured probe: a silent wait, and when it failed, a
+    "toolchain not usable" verdict about a toolchain "alr toolchain" showed
+    as installed. stdin is closed for the reason capture() gives.
+    """
+    skip_msys2()
+    try:
+        p = subprocess.Popen([alr_path(), "--non-interactive", "exec", "--",
+                              "arm-eabi-gcc", "-dumpversion"],
+                             cwd=REPO, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             encoding="utf-8", errors="replace")
+    except OSError:
+        return 127, ""
+    seen = []
+    for line in p.stdout:
+        seen.append(line)
+        print("           " + line.rstrip(), flush=True)
+    return p.wait(), "".join(seen)
+
+
+def _toolchain_advice(missing: list[str], said: str, selected: bool,
+                      msys2: Path | None, pacman: str | None) -> list[str]:
+    """What to tell a student whose toolchain does not run, as lines.
+
+    "alr toolchain" answering yes while "alr exec" fails is not a download
+    problem, and retrying the select -- which the old message advised -- only
+    re-marks what is already there. So the verdict names which half failed,
+    quotes alr, and points at MSYS2 when there is one to point at.
+    """
+    alr = alr_path()
+    if not selected:
+        return [
+            f"  FAILED   toolchain: {', '.join(missing)} not usable; \"alr toolchain\" does not",
+            f"           list gnat_arm_elf {GNAT_VERSION} and gprbuild {GPRBUILD_VERSION} as the default.",
+            "           Usually the download stopped part way (network, proxy,",
+            "           or too little disk: it needs about 2 GB). Run this by",
+            "           hand and read its output, then run setup again:",
+            f"             \"{alr}\" toolchain --select "
+            f"gnat_arm_elf={GNAT_VERSION} gprbuild={GPRBUILD_VERSION}",
+            f"           \"{alr}\" toolchain   shows what is installed.",
+        ]
+    lines = [
+        f"  FAILED   toolchain: installed and selected (\"alr toolchain\" says so),",
+        f"           but alr cannot run {' or '.join(missing)} in this folder, so",
+        "           nothing builds here, in the terminal or in VS Code.",
+    ]
+    quoted = [l.rstrip() for l in said.splitlines() if l.strip()][-6:]
+    if quoted:
+        lines.append("           alr said:")
+        lines += ["             " + l[:110] for l in quoted]
+    if msys2:
+        lines += [
+            f"           Alire's own MSYS2 is at {msys2}, left by an earlier",
+            "           install. Alire puts it in front of PATH for every command,",
+            "           even with msys2.do_not_install set, and a half-installed",
+            "           one breaks it. This project needs nothing from it:",
+            "             python mb.py setup --remove-msys2",
+        ]
+    elif pacman:
+        lines += [
+            f"           An MSYS2 is on PATH ({pacman}); Alire uses it for every",
+            "           command. Try again from a terminal without it on PATH.",
+        ]
+    else:
+        lines += [
+            "           Run this in this folder and read its output:",
+            f"             \"{alr}\" exec -- gprbuild --version",
+        ]
+    return lines
 
 
 def _pyocd_problem() -> str | None:
@@ -1763,18 +1911,38 @@ def cmd_setup(args) -> int:
     # same alr instead of failing with "alr not found".
     remember_alr()
 
+    msys2 = None
     if os.name == "nt":
         # Already done by skip_msys2() before the first alr call above; say so,
         # because a student who hit the old hang needs to see it is now off.
         print("  set      msys2.do_not_install=true")
+        msys2 = alire_msys2_dir()
+        if msys2 and args.remove_msys2:
+            problem = remove_tree(msys2)
+            if problem is None:
+                print(f"  removed  Alire's MSYS2 ({msys2})")
+                msys2 = None
+            else:
+                ok = False
+                print(f"  FAILED   removing {msys2}: {problem}")
+                print("           Something from it is still running (often gpg-agent).")
+                print("           Sign out and back in, then run this again -- or delete")
+                print("           that folder in Explorer.")
+        elif msys2:
+            print(f"  note     Alire's MSYS2 is at {msys2} (from an earlier install);")
+            print("           this project does not use it. If the toolchain fails below,")
+            print("           run setup again with --remove-msys2.")
+        elif args.remove_msys2:
+            print("  OK       no MSYS2 of Alire's to remove")
 
     # 4. Toolchain ----------------------------------------------------------
     # The select is checked afterwards, not trusted: a Windows student ended up
     # with Alire on disk and neither compiler nor gprbuild, and setup had said
     # nothing. So: verify, try once more, and if it still is not there, say
     # what to run by hand -- with the full path to alr, which is not on PATH.
-    if _toolchain_ok() and not args.force:
-        print("  OK       toolchain already selected")
+    # "Selected" and "runs here" are checked apart, because they fail apart.
+    if _toolchain_selected() and not args.force:
+        print("  OK       toolchain selected")
     else:
         info(f"installing gnat_arm_elf={GNAT_VERSION} and gprbuild={GPRBUILD_VERSION}")
         print("           about 550 MB, unpacking to roughly 2 GB -- this takes a while")
@@ -1783,23 +1951,30 @@ def cmd_setup(args) -> int:
         select = ["alr", "--non-interactive", "toolchain", "--select",
                   f"gnat_arm_elf={GNAT_VERSION}", f"gprbuild={GPRBUILD_VERSION}"]
         run(select)
-        if not _toolchain_ok():
-            info("the toolchain is not usable yet -- trying once more")
+        if not _toolchain_selected():
+            info("the toolchain is not selected yet -- trying once more")
             run(select)
-        missing = _toolchain_missing()
-        if not missing:
-            print("  OK       toolchain installed and verified")
-        else:
-            ok = False
-            print(f"  FAILED   toolchain: {', '.join(missing)} not usable after two tries")
-            print("           Usually the download stopped part way (network, proxy,")
-            print("           or too little disk: it needs about 2 GB). Run this by")
-            print("           hand and read its output, then run setup again:")
-            print(f"             \"{alr_path()}\" toolchain --select "
-                  f"gnat_arm_elf={GNAT_VERSION} gprbuild={GPRBUILD_VERSION}")
-            print(f"           \"{alr_path()}\" toolchain   shows what is installed.")
+        if _toolchain_selected():
+            print("  OK       toolchain installed and selected")
 
-    if _toolchain_ok():
+    # The workspace: its first "alr exec" also fetches gnatprove. Shown, not
+    # captured, when it has never run (no lockfile) or the quiet probe fails,
+    # so a download is visible and a failure is on screen in alr's words.
+    missing, said = _toolchain_missing()
+    if missing or not (REPO / "alire" / "alire.lock").is_file():
+        info("preparing this folder's Alire workspace (the first time also downloads gnatprove,")
+        print("           a few hundred MB)")
+        _sync_workspace()
+        missing, said = _toolchain_missing()
+    if not missing:
+        print("  OK       toolchain runs in this folder")
+    else:
+        ok = False
+        for line in _toolchain_advice(missing, said, _toolchain_selected(),
+                                      msys2, shutil.which("pacman")):
+            print(line)
+
+    if not missing:
         # The Ada extension: it looks for alr on PATH, which we never edit.
         chosen = PROJECT_FILE.read_text().strip() if PROJECT_FILE.is_file() else "template"
         try:
@@ -1899,7 +2074,14 @@ def cmd_doctor(args) -> int:
             print(f"  {'OK      ' if ext.lower() in have else 'missing '} VS Code extension {ext}")
 
     if not critical_ok:
-        print("\nA build tool is missing. Run:  alr toolchain --select")
+        missing, said = _toolchain_missing()
+        if not missing:
+            print("\nA build tool is missing. Run:  python mb.py setup")
+        else:
+            print()
+            for line in _toolchain_advice(missing, said, _toolchain_selected(),
+                                          alire_msys2_dir(), shutil.which("pacman")):
+                print(line)
         return 1
     print("\nBuild environment looks good.")
     return 0
@@ -1991,6 +2173,9 @@ def main() -> int:
                    help="skip pyocd; flash from the browser instead")
     p.add_argument("--force", action="store_true",
                    help="reinstall the toolchain even if one is present")
+    p.add_argument("--remove-msys2", action="store_true",
+                   help="Windows: delete the MSYS2 an earlier Alire installed; this project "
+                        "never uses it, and a broken one stops alr from running the toolchain")
     p.add_argument("--no-install-tools", action="store_true",
                    help="never install git or VS Code, only report them")
     p.add_argument("--ask", action="store_true",

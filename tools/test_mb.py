@@ -320,6 +320,46 @@ with tempfile.TemporaryDirectory() as td:
     v.write_text("Linux version 6.8.0-45-generic (buildd@lcy02) ...\n")
     check(mb.is_wsl(v) is False, "a plain Linux is not")
     check(mb.is_wsl(Path(td) / "missing") is False, "and no such file (macOS, Windows) is not either")
+# ------------------------------------------- toolchain: selected vs runs here
+# A Windows PC: "alr toolchain" listed the pair as default, every "alr exec"
+# in the repository failed, and setup advised re-running the select -- which
+# only re-marks what is there. Alire's leftover MSYS2 was the cause.
+LISTING = ("CRATE        VERSION STATUS    NOTES\n"
+           f"gprbuild     {mb.GPRBUILD_VERSION}  Default\n"
+           "gnat_arm_elf 14.2.1  Available\n"
+           f"gnat_arm_elf {mb.GNAT_VERSION}  Default\n")
+check(mb._toolchain_selected(LISTING), "the pinned pair listed as Default is selected")
+check(not mb._toolchain_selected(LISTING.replace(f"{mb.GNAT_VERSION}  Default", f"{mb.GNAT_VERSION}  Available")),
+      "a compiler that is only Available is not selected")
+check(not mb._toolchain_selected(LISTING.replace(mb.GPRBUILD_VERSION, "22.0.1")),
+      "another gprbuild as Default is not ours")
+SAID = "Note: Synchronizing workspace...\nerror: tar: Cannot connect to C: resolve failed\n"
+msys = Path("C:/Users/s/AppData/Local/alire/cache/msys64")
+adv = "\n".join(mb._toolchain_advice(["gnat_arm_elf", "gprbuild"], SAID, True, msys, None))
+check("installed and selected" in adv and "--remove-msys2" in adv and "resolve failed" in adv
+      and "toolchain --select" not in adv,
+      f"selected but not running, with an MSYS2: quote alr, point at --remove-msys2, not at the select (got:\n{adv})")
+adv = "\n".join(mb._toolchain_advice(["gprbuild"], SAID, True, None, None))
+check("--remove-msys2" not in adv and "exec -- gprbuild --version" in adv,
+      f"no MSYS2 to blame: name the command to run by hand (got:\n{adv})")
+adv = "\n".join(mb._toolchain_advice(["gnat_arm_elf"], "", False, msys, None))
+check("toolchain --select" in adv and "--remove-msys2" not in adv,
+      f"not selected at all: that is the download, and the select is the command (got:\n{adv})")
+check(mb._msys2_candidate("", "C:/Users/s/AppData/Local") == msys,
+      "Alire's MSYS2 lives in <LOCALAPPDATA>/alire/cache/msys64 unless configured")
+check(mb._msys2_candidate("D:/msys64", "C:/x") == Path("D:/msys64"), "msys2.install_dir wins when set")
+if mb.os.name != "nt":
+    check(mb.alire_msys2_dir() is None, "no MSYS2 question outside Windows")
+with tempfile.TemporaryDirectory() as td:
+    tree = Path(td) / "msys64" / "usr" / "bin"
+    tree.mkdir(parents=True)
+    locked = tree / "tar.exe"
+    locked.write_text("x")
+    locked.chmod(0o444)              # MSYS2 ships read-only files; rmtree refuses them on Windows
+    problem = mb.remove_tree(Path(td) / "msys64")
+    check(problem is None and not (Path(td) / "msys64").exists(),
+          f"--remove-msys2 removes a tree with read-only files (got: {problem})")
+
 front = subprocess.run([sys.executable, str(ROOT / "mb.py"), "--help"], capture_output=True, text=True)
 check(front.returncode == 0 and "setup" in front.stdout, "mb.py at the root runs the tool: python mb.py setup")
 
