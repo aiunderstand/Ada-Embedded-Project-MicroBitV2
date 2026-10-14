@@ -602,6 +602,12 @@ def cmd_build(args) -> int:
         return build_all(args)
     pid, gpr = chosen_project(args)
     info(f"building {pid} ({rel(gpr)})")
+    # "Choose project..." (--use/--use-dir) picks what gets built; without this
+    # the language server stays on the template's .gpr, so every symbol from a
+    # different example's closure (e.g. LSM303AGR, only withed by the
+    # accelerometer example) shows as unresolved even though it builds fine.
+    if getattr(args, "use", None) or getattr(args, "use_dir", None):
+        point_als_at(pid, gpr)
     if not build_one(pid, gpr, verbose=getattr(args, "verbose", False)):
         return 1
     stage_firmware(gpr, pid)

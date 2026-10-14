@@ -435,6 +435,58 @@ function startLocalBoards({
   };
 }
 
+// ------------------------------------------------ Ada project switch, for real
+//
+// "Choose project..." (mb.py build --use/--use-dir) rewrites .als.json to
+// point the Ada Language Server at the chosen project's .gpr -- but the
+// server only reads that file at startup; afterwards the Ada extension just
+// *offers* a "restart the language server?" notification on every write,
+// which is easy to miss (it fires while a build task has the focus) or
+// dismiss. Left unrestarted, the server keeps the old project loaded, so
+// every symbol outside its closure (e.g. "LSM303AGR", withed only by the
+// accelerometer example) stays red even though the build itself is fine.
+// This watches the same file and restarts the server itself, the moment its
+// content actually changes -- harmless if the Ada extension's own prompt
+// also fires; the restart it offers then simply finds nothing left to do.
+const ALS_JSON = ".als.json";
+const ADA_EXTENSION = "AdaCore.ada";
+
+function watchAlsProject(root, {
+  workspace = vscode.workspace,
+  commands = vscode.commands,
+  extensions = vscode.extensions,
+  Uri = vscode.Uri,
+  RelativePattern = vscode.RelativePattern,
+  log: logLine = log,
+} = {}) {
+  const uri = Uri.joinPath(root, ALS_JSON);
+  let last = null;
+  const read = async () => {
+    try {
+      return Buffer.from(await workspace.fs.readFile(uri)).toString("utf8");
+    } catch {
+      return null; // not written yet
+    }
+  };
+  const onChange = async () => {
+    const text = await read();
+    if (text === null || text === last) return;
+    last = text;
+    if (!extensions.getExtension(ADA_EXTENSION)) return; // nothing to restart
+    try {
+      await commands.executeCommand("ada.restartLanguageServers");
+      logLine("project selection changed; restarted the Ada language server");
+    } catch (err) {
+      logLine(`could not restart the Ada language server: ${err.message}`);
+    }
+  };
+  read().then((text) => { last = text; }); // the committed file at startup: no restart for it
+  const watcher = workspace.createFileSystemWatcher(new RelativePattern(root, ALS_JSON));
+  watcher.onDidChange(onChange);
+  watcher.onDidCreate(onChange);
+  return watcher;
+}
+
 async function activate(context) {
   output = vscode.window.createOutputChannel("micro:bit companion");
   context.subscriptions.push(
@@ -444,6 +496,8 @@ async function activate(context) {
     // The flasher measures its round trip to the Codespace with this.
     vscode.commands.registerCommand("microbit.companion.ping", () => "pong")
   );
+  const root = await microbitRoot();
+  if (root) context.subscriptions.push(watchAlsProject(root));
   if (vscode.env.uiKind === vscode.UIKind.Web) {
     const relay = startGdbRelay();
     context.subscriptions.push(
@@ -456,7 +510,6 @@ async function activate(context) {
     // has no USB either, and there is nothing to run. The bridge runs
     // mb.py, so it runs in the folder that has one -- never in whatever
     // repository the student happens to have open.
-    const root = await microbitRoot();
     if (root) {
       const local = startLocalBoards({ cwd: root.fsPath });
       context.subscriptions.push(
@@ -479,4 +532,5 @@ module.exports = {
   // For tools/test_companion.mjs.
   _gdb: { startGdbRelay, makeBrowserProbeProvider, explainAttachFailure, rspFrame, GDB_PORT },
   _local: { startLocalBoards, microbitRoot, MARKER },
+  _als: { watchAlsProject, ALS_JSON, ADA_EXTENSION },
 };

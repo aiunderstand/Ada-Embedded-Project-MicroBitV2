@@ -354,9 +354,59 @@ relay.server.close();
   local.dispose();
 }
 
+// watchAlsProject: a project switch (mb.py build --use/--use-dir) rewrites
+// .als.json; this is what turns that file change into an actual restart of
+// the Ada language server, instead of a notification a student can miss.
+{
+  const { watchAlsProject } = mod.exports._als;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "als-"));
+  const file = path.join(dir, ".als.json");
+  fs.writeFileSync(file, '{"projectFile":"Code/itrs.gpr"}');
+  const root = { fsPath: dir };
+  const handlers = [];
+  const workspaceStub = {
+    fs: { readFile: async (uri) => fs.readFileSync(uri.fsPath) },
+    createFileSystemWatcher: () => ({
+      onDidChange: (cb) => handlers.push(cb),
+      onDidCreate: (cb) => handlers.push(cb),
+      dispose() {},
+    }),
+  };
+  const fire = async () => { for (const h of handlers) await h(); };
+  const extensionsStub = { installed: true, getExtension(id) { return this.installed && id === "AdaCore.ada" ? {} : undefined; } };
+  const restarts = [];
+  const commandsStub = { executeCommand: async (id) => { restarts.push(id); } };
+  const Uri = { joinPath: (base, name) => ({ fsPath: path.join(base.fsPath, name) }) };
+  const RelativePattern = function (base, pattern) { this.base = base; this.pattern = pattern; };
+
+  const watcher = watchAlsProject(root, {
+    workspace: workspaceStub, commands: commandsStub, extensions: extensionsStub,
+    Uri, RelativePattern, log: () => {},
+  });
+  await sleep(50); // the initial read, seeding "last" with the committed content
+  await fire();
+  check(restarts.length === 0, "no restart for the file's own committed content at startup");
+
+  fs.writeFileSync(file, '{"projectFile":"Code/libs/Ada_Drivers_Library/examples/.../accelerometer.gpr"}');
+  await fire();
+  check(restarts.length === 1 && restarts[0] === "ada.restartLanguageServers",
+        "switching projects restarts the language server");
+
+  await fire();
+  check(restarts.length === 1, "a repeated notification of the same content does not restart it again");
+
+  extensionsStub.installed = false;
+  fs.writeFileSync(file, '{"projectFile":"template"}');
+  await fire();
+  check(restarts.length === 1, "no Ada extension installed: nothing to restart");
+
+  watcher.dispose();
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 if (fail.length) {
   console.error("FAIL");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
-console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite, desktop bridge, bridge gives up");
+console.log("PASS  companion: framing, acks, interrupt, errors, detach, close mid-continue, close mid-attach, early acks, refusals, port fallback, launch rewrite, desktop bridge, bridge gives up, als project switch restarts the language server");
